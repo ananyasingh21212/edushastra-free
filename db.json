@@ -1,0 +1,91 @@
+{
+  "students": [
+    {
+      "id": "S001",
+      "email": "student@example.com",
+      "password": "$2b$10$1FXk02pLdw4DVWnFEGeLQOO7nyhvCOfF9sirfgpmL5RrozQCz3PFu",
+      "name": "Demo Student",
+      "phone": "1234567890",
+      "registrationDate": "2026-04-24T11:03:29.261Z",
+      "status": "Active",
+      "role": "student"
+    },
+    {
+      "id": "A001",
+      "email": "admin@example.com",
+      "password": "$2b$10$1jmPZfR4wssfj4pwN2JF3evTg8uUDScA3i28bs5Map8ofFVmv4Gb.",
+      "name": "Admin User",
+      "phone": "0987654321",
+      "registrationDate": "2026-04-24T11:03:29.367Z",
+      "status": "Active",
+      "role": "admin"
+    }
+  ],
+  "courseMaterials": [
+    {
+      "id": "CM001",
+      "topicName": "Number Systems",
+      "section": "Quantitative",
+      "googleSheetLink": "#",
+      "googleDriveLink": "#",
+      "description": "Basics of Number Systems for CAT.",
+      "dateAdded": "2026-04-24T11:03:29.367Z"
+    }
+  ],
+  "videoLectures": [
+    {
+      "id": "VL001",
+      "topicName": "Arithmetic Basics",
+      "section": "Quantitative",
+      "googleSheetLink": "#",
+      "googleDriveLink": "#",
+      "duration": 45,
+      "instructorName": "Expert Tutor",
+      "dateUploaded": "2026-04-24T11:03:29.367Z"
+    },
+    {
+      "topicName": "Time Speed & Distance",
+      "section": "Quantitative",
+      "googleSheetLink": "",
+      "googleDriveLink": "https://www.youtube.com/watch?v=zmK8yaeXCFA&t=553s",
+      "duration": "",
+      "instructorName": "",
+      "id": "VL1777029215391",
+      "dateUploaded": "2026-04-24T11:13:35.391Z"
+    },
+    {
+      "topicName": "Time Speed & Distance",
+      "section": "Quantitative",
+      "googleSheetLink": "",
+      "googleDriveLink": "https://www.youtube.com/watch?v=zmK8yaeXCFA&t=553s",
+      "duration": "",
+      "instructorName": "",
+      "id": "VL1777029217105",
+      "dateUploaded": "2026-04-24T11:13:37.105Z"
+    },
+    {
+      "topicName": "Time Speed & Distance",
+      "section": "Quantitative",
+      "googleSheetLink": "",
+      "googleDriveLink": "https://www.youtube.com/watch?v=zmK8yaeXCFA&t=553s",
+      "duration": "",
+      "instructorName": "",
+      "id": "VL1777029217690",
+      "dateUploaded": "2026-04-24T11:13:37.690Z"
+    }
+  ],
+  "unverifiedQuestions": [],
+  "approvedQuestions": [],
+  "dailyTests": [],
+  "testResults": [],
+  "assignedTests": [],
+  "announcements": [
+    {
+      "id": "AN001",
+      "title": "Welcome to CAT Prep Pro",
+      "content": "Good luck with your preparation!",
+      "createdDate": "2026-04-24T11:03:29.367Z",
+      "createdBy": "Admin"
+    }
+  ]
+}
