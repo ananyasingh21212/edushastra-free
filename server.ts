@@ -6,6 +6,7 @@ import fs from "fs";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { google } from "googleapis";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -284,7 +285,18 @@ async function startServer() {
       next();
     });
   };
-
+// Gemini AI Proxy Route
+  app.post("/api/chat", authenticateToken, async (req: any, res) => {
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      const result = await model.generateContent(req.body.message);
+      res.json({ reply: result.response.text() });
+    } catch (err: any) {
+      console.error("Gemini API error:", err.message);
+      res.status(500).json({ error: "AI request failed" });
+    }
+  });
   // API Routes
   app.post("/api/login", async (req, res) => {
     const { email, password } = req.body;
