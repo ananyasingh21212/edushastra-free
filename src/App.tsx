@@ -389,7 +389,7 @@ function Dashboard({ user, setActiveTab }: { user: UserProfile, setActiveTab: (t
   useEffect(() => {
     apiRequest("/performance").then(results => {
       if (results.length > 0) {
-        const avg = results.reduce((acc: number, r: any) => acc + r.totalScore, 0) / results.length;
+        const avg = results.reduce((a, b) => a + Number(b.totalScore), 0) / results.length;
         setStats({
           attempted: results.length,
           avgScore: Math.round(avg),
