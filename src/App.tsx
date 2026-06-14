@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+ import SectionalTest from "./sectional-test";
 import { 
   BookOpen, 
   Video, 
@@ -209,6 +210,7 @@ export default function App() {
                   <SidebarItem icon={Video} label="Video Lectures" active={activeTab === "videos"} onClick={() => { setActiveTab("videos"); setIsMobileMenuOpen(false); }} />
                   <SidebarItem icon={ClipboardList} label="Daily Practice" active={activeTab === "daily-test"} onClick={() => { setActiveTab("daily-test"); setIsMobileMenuOpen(false); }} />
                   <SidebarItem icon={History} label="Test History" active={activeTab === "history"} onClick={() => { setActiveTab("history"); setIsMobileMenuOpen(false); }} />
+                   <SidebarItem icon={ClipboardList} label="Sectional Tests" active={activeTab === "sectional"} onClick={() => setActiveTab("sectional")} />
                   <SidebarItem icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => { setActiveTab("analytics"); setIsMobileMenuOpen(false); }} />
                   
                   {user.role === "admin" && (
@@ -252,6 +254,7 @@ export default function App() {
             <SidebarItem icon={Video} label="Video Lectures" active={activeTab === "videos"} onClick={() => setActiveTab("videos")} />
             <SidebarItem icon={ClipboardList} label="Daily Practice" active={activeTab === "daily-test"} onClick={() => setActiveTab("daily-test")} />
             <SidebarItem icon={History} label="Test History" active={activeTab === "history"} onClick={() => setActiveTab("history")} />
+             <SidebarItem icon={ClipboardList} label="Sectional Tests" active={activeTab === "sectional"} onClick={() => setActiveTab("sectional")} />
             <SidebarItem icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
             
             {user.role === "admin" && (
@@ -293,6 +296,7 @@ export default function App() {
             {activeTab === "daily-test" && <DailyTest user={user} />}
             {activeTab === "history" && <TestHistory user={user} />}
             {activeTab === "analytics" && <Analytics user={user} />}
+              {activeTab === "sectional" && <SectionalTest user={user} />}
             {activeTab === "admin" && <AdminDashboard user={user} />}
           </motion.div>
         </AnimatePresence>
