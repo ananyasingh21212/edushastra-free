@@ -59,7 +59,12 @@ const SHEET_CONFIG: Record<string, string[]> = {
   ApprovedQuestions: ["id", "section", "questionText", "options", "correctAnswer", "explanation", "difficulty", "approvedDate"],
   DailyTests: ["id", "testDate", "questionIds"],
   TestResults: ["id", "studentId", "testDate", "testId", "totalScore", "correctAnswers", "wrongAnswers", "skippedQuestions", "timeSpent", "sectionScores", "studentAnswers"],
+   SectionalTests:   ["id", "name", "section", "durationMinutes", "questionIds", "passageIds", "targetExam", "publishedDate"],
+  SectionalQuestions: ["id", "section", "questionText", "options", "correctAnswer", "explanation", "difficulty", "passageId", "targetExam"],
+  SectionalPassages:  ["id", "title", "text", "targetExam"],
+  SectionalResults:   ["id", "studentId", "testId", "section", "totalScore", "correctAnswers", "wrongAnswers", "skippedQuestions", "timeSpent", "studentAnswers", "scaledScore", "submittedAt"],
   Announcements: ["id", "title", "content", "createdDate", "createdBy"]
+  
 };
 
 /**
@@ -98,7 +103,7 @@ async function fetchSheetData(range: string) {
         if (index !== -1) {
           let val = row[index] || "";
           // Auto-parse JSON strings for complex fields
-          if (["options", "questionIds", "sectionScores", "studentAnswers"].includes(key)) {
+         if (["options", "questionIds", "passageIds", "sectionScores", "studentAnswers"].includes(key)) {
             if (typeof val === "string" && (val.startsWith("[") || val.startsWith("{"))) {
               try { val = JSON.parse(val); } catch (e) { val = []; }
             } else if (val === "") {
@@ -192,6 +197,10 @@ interface DB {
   testResults: any[];
   assignedTests: any[];
   announcements: any[];
+  sectionalTests: any[];
+sectionalQuestions: any[];
+sectionalPassages: any[];
+sectionalResults: any[];
 }
 
 const initialDB: DB = {
@@ -245,6 +254,10 @@ const initialDB: DB = {
   dailyTests: [],
   testResults: [],
   assignedTests: [],
+  sectionalTests: [],
+sectionalQuestions: [],
+sectionalPassages: [],
+sectionalResults: [],
   announcements: [
     {
       id: "AN001",
@@ -573,7 +586,185 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
     
     res.json(result);
   });
-
+app.get("/api/sectional-tests", authenticateToken, async (req: any, res) => {
+  try {
+    let tests = await fetchSheetData("SectionalTests") || getLocalDB().sectionalTests;
+ 
+    // Students only see tests matching their exam (or "ALL")
+    if (req.user.role === "student") {
+      tests = tests.filter(
+        (t: any) => t.targetExam === "ALL" || t.targetExam === req.user.targetExam
+      );
+    }
+ 
+    // Attach question count without sending full questions
+    const questions =
+      await fetchSheetData("SectionalQuestions") || getLocalDB().sectionalQuestions;
+ 
+    const enriched = tests.map((t: any) => {
+      const qIds: string[] = Array.isArray(t.questionIds) ? t.questionIds : [];
+      return {
+        ...t,
+        questions: questions
+          .filter((q: any) => qIds.includes(q.id))
+          .map((q: any) => ({ id: q.id, section: q.section })), // minimal for list view
+      };
+    });
+ 
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to load sectional tests" });
+  }
+});
+ 
+// ─── GET /api/sectional-test/:id  ── full test with questions + passages ─────
+app.get("/api/sectional-test/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const tests =
+      await fetchSheetData("SectionalTests") || getLocalDB().sectionalTests;
+    const test = tests.find((t: any) => t.id === id);
+ 
+    if (!test) return res.status(404).json({ message: "Test not found" });
+ 
+    const allQuestions =
+      await fetchSheetData("SectionalQuestions") || getLocalDB().sectionalQuestions;
+    const allPassages =
+      await fetchSheetData("SectionalPassages") || getLocalDB().sectionalPassages;
+ 
+    const qIds: string[] = Array.isArray(test.questionIds) ? test.questionIds : [];
+    const pIds: string[] = Array.isArray(test.passageIds) ? test.passageIds : [];
+ 
+    const questions = allQuestions.filter((q: any) => qIds.includes(q.id));
+    const passages = allPassages.filter((p: any) => pIds.includes(p.id));
+ 
+    res.json({ ...test, questions, passages });
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to load test" });
+  }
+});
+ 
+// ─── GET /api/sectional-results  ── this student's past results ──────────────
+app.get("/api/sectional-results", authenticateToken, async (req: any, res) => {
+  try {
+    const results =
+      await fetchSheetData("SectionalResults") || getLocalDB().sectionalResults;
+    res.json(results.filter((r: any) => r.studentId === req.user.id));
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to load results" });
+  }
+});
+ 
+// ─── POST /api/sectional-results  ── save a new result ───────────────────────
+app.post("/api/sectional-results", authenticateToken, async (req: any, res) => {
+  try {
+    const { testId } = req.body;
+ 
+    // Prevent double submission
+    const allResults =
+      await fetchSheetData("SectionalResults") || getLocalDB().sectionalResults;
+    const existing = allResults.find(
+      (r: any) => r.studentId === req.user.id && r.testId === testId
+    );
+    if (existing) {
+      return res.status(400).json({ message: "Already attempted this test." });
+    }
+ 
+    const result = {
+      ...req.body,
+      id: `SR${Date.now()}`,
+      studentId: req.user.id,
+      submittedAt: new Date().toISOString(),
+    };
+ 
+    await appendSheetData("SectionalResults", result);
+ 
+    const db = getLocalDB();
+    db.sectionalResults.push(result);
+    saveLocalDB(db);
+ 
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to save result" });
+  }
+});
+ 
+// ─── Admin: POST /api/sectional-tests  ── publish a new sectional test ───────
+app.post("/api/sectional-tests", authenticateToken, async (req: any, res) => {
+  if (req.user.role !== "admin") return res.sendStatus(403);
+  try {
+    const { name, section, durationMinutes, questionIds, passageIds, targetExam } = req.body;
+ 
+    if (!name || !section || !questionIds?.length) {
+      return res.status(400).json({ message: "name, section, and questionIds are required" });
+    }
+ 
+    const newTest = {
+      id: `ST${Date.now()}`,
+      name,
+      section,
+      durationMinutes: durationMinutes || 40,
+      questionIds,
+      passageIds: passageIds || [],
+      targetExam: targetExam || "CAT",
+      publishedDate: new Date().toISOString(),
+    };
+ 
+    await appendSheetData("SectionalTests", newTest);
+ 
+    const db = getLocalDB();
+    db.sectionalTests.push(newTest);
+    saveLocalDB(db);
+ 
+    res.json({ success: true, testId: newTest.id });
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to publish test" });
+  }
+});
+ 
+// ─── Admin: POST /api/sectional-questions  ── add questions ──────────────────
+app.post("/api/sectional-questions", authenticateToken, async (req: any, res) => {
+  if (req.user.role !== "admin") return res.sendStatus(403);
+  try {
+    const questions: any[] = req.body.questions;
+    for (const q of questions) {
+      const newQ = { ...q, id: q.id || `SQ${Date.now()}${Math.random().toString(36).substr(2, 4)}` };
+      await appendSheetData("SectionalQuestions", newQ);
+      const db = getLocalDB();
+      db.sectionalQuestions.push(newQ);
+      saveLocalDB(db);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to add questions" });
+  }
+});
+ 
+// ─── Admin: POST /api/sectional-passages  ── add RC passages ─────────────────
+app.post("/api/sectional-passages", authenticateToken, async (req: any, res) => {
+  if (req.user.role !== "admin") return res.sendStatus(403);
+  try {
+    const passage = {
+      ...req.body,
+      id: req.body.id || `SP${Date.now()}`,
+    };
+    await appendSheetData("SectionalPassages", passage);
+    const db = getLocalDB();
+    db.sectionalPassages.push(passage);
+    saveLocalDB(db);
+    res.json({ success: true, passageId: passage.id });
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to add passage" });
+  }
+});
+ 
+// ─── Admin: GET /api/sectional-questions  ── list all questions ───────────────
+app.get("/api/sectional-questions", authenticateToken, async (req: any, res) => {
+  if (req.user.role !== "admin") return res.sendStatus(403);
+  const questions =
+    await fetchSheetData("SectionalQuestions") || getLocalDB().sectionalQuestions;
+  res.json(questions);
+});
   app.get("/api/performance", authenticateToken, async (req: any, res) => {
     const results = await fetchSheetData("TestResults") || getLocalDB().testResults;
     res.json(results.filter(r => r.studentId === req.user.id));
