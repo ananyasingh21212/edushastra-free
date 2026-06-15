@@ -160,6 +160,7 @@ export default function SectionalTest({ user }: { user: any }) {
   const [result, setResult] = useState<SectionalResult | null>(null);
   const [activePassage, setActivePassage] = useState<Passage | null>(null);
   const [reviewMode, setReviewMode] = useState(false);
+  const [testLoading, setTestLoading] = useState(false);
 
   // ── Load tests ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -218,32 +219,52 @@ export default function SectionalTest({ user }: { user: any }) {
   }, [currentIdx, selectedTest, view]);
 
   // ── Actions ──────────────────────────────────────────────────────────────
-const startTest = async (test: SectionalTest) => {
-  if (attempts[test.id]) {
-    // already attempted — just show result
-    setSelectedTest(test);
-    setResult(attempts[test.id]);
-    setAnswers(attempts[test.id].studentAnswers);
-    setView("result");
-    return;
-    }
+  const startTest = async (test: SectionalTest) => {
+    // If already attempted, fetch full test for review then show result
+    if (attempts[test.id]) {
+      setTestLoading(true);
       try {
-    const fullTest = await apiRequest(`/sectional-test/${test.id}`);
-    setSelectedTest(fullTest);
-  } catch {
-    toast.error("Failed to load test questions");
-    return;
-  }
-    setSelectedTest(test);
-    setView("instructions");
+        const fullTest = await apiRequest(`/sectional-test/${test.id}`);
+        setSelectedTest(fullTest);
+        setResult(attempts[test.id]);
+        setAnswers(attempts[test.id].studentAnswers || {});
+        setView("result");
+      } catch {
+        toast.error("Failed to load test");
+      } finally {
+        setTestLoading(false);
+      }
+      return;
+    }
+
+    // Fetch full test (with all questions) before showing instructions
+    setTestLoading(true);
+    try {
+      const fullTest = await apiRequest(`/sectional-test/${test.id}`);
+      if (!fullTest?.questions?.length) {
+        toast.error("This test has no questions yet. Please check the sheet data.");
+        return;
+      }
+      setSelectedTest(fullTest);
+      setView("instructions");
+    } catch (err: any) {
+      toast.error("Failed to load test questions. Check server connection.");
+    } finally {
+      setTestLoading(false);
+    }
   };
 
   const beginTest = () => {
     if (!selectedTest) return;
+    const questions = selectedTest.questions;
+    if (!questions?.length) {
+      toast.error("No questions found in this test.");
+      return;
+    }
     setCurrentIdx(0);
     setAnswers({});
     setFlagged(new Set());
-    setTimeLeft(selectedTest.durationMinutes * 60);
+    setTimeLeft((selectedTest.durationMinutes || 40) * 60);
     setSubmitted(false);
     setResult(null);
     setReviewMode(false);
@@ -450,8 +471,11 @@ const startTest = async (test: SectionalTest) => {
                               className="w-full"
                               variant={attempted ? "outline" : "default"}
                               onClick={() => startTest(t)}
+                              disabled={testLoading}
                             >
-                              {attempted ? "Review Attempt" : "Start Section"}
+                              {testLoading && selectedTest?.id === t.id
+                                ? "Loading..."
+                                : attempted ? "Review Attempt" : "Start Section"}
                             </Button>
                           </CardContent>
                         </Card>
@@ -527,7 +551,15 @@ const startTest = async (test: SectionalTest) => {
 
   // ── TEST VIEW ────────────────────────────────────────────────────────────────
   if (view === "test" && selectedTest) {
-    const questions = selectedTest.questions;
+    const questions = selectedTest.questions || [];
+    if (!questions.length) {
+      return (
+        <div className="flex flex-col items-center justify-center py-24 gap-4">
+          <p className="text-muted-foreground">No questions found in this test.</p>
+          <Button onClick={() => setView("list")}>Back to Tests</Button>
+        </div>
+      );
+    }
     const currentQ = questions[currentIdx];
     if (!currentQ) return null;
     const meta = SECTION_META[selectedTest.section];
@@ -626,7 +658,7 @@ const startTest = async (test: SectionalTest) => {
                     setAnswers((prev) => ({ ...prev, [currentQ.id]: val }))
                   }
                 >
-                  {currentQ.options.map((opt, idx) => (
+                  {(Array.isArray(currentQ.options) ? currentQ.options : []).filter(Boolean).map((opt, idx) => (
                     <Label
                       key={opt}
                       className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
