@@ -218,14 +218,22 @@ export default function SectionalTest({ user }: { user: any }) {
   }, [currentIdx, selectedTest, view]);
 
   // ── Actions ──────────────────────────────────────────────────────────────
-  const startTest = async (test: SectionalTest) => {
-    if (attempts[test.id]) {
-      setSelectedTest(test);
-      setResult(attempts[test.id]);
-      setAnswers(attempts[test.id].studentAnswers);
-      setView("result");
-      return;
+const startTest = async (test: SectionalTest) => {
+  if (attempts[test.id]) {
+    // already attempted — just show result
+    setSelectedTest(test);
+    setResult(attempts[test.id]);
+    setAnswers(attempts[test.id].studentAnswers);
+    setView("result");
+    return;
     }
+      try {
+    const fullTest = await apiRequest(`/sectional-test/${test.id}`);
+    setSelectedTest(fullTest);
+  } catch {
+    toast.error("Failed to load test questions");
+    return;
+  }
     setSelectedTest(test);
     setView("instructions");
   };
