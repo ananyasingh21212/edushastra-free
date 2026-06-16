@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
+import "katex/dist/katex.min.css";
+import Latex from "react-latex-next";
 import {
   Clock,
   ChevronRight,
@@ -648,8 +650,8 @@ export default function SectionalTest({ user }: { user: any }) {
                   </button>
                 </div>
                 <p className="text-base font-semibold leading-relaxed mt-3">
-                  {currentQ.questionText}
-                </p>
+  <Latex>{currentQ.questionText}</Latex>
+</p>
               </CardHeader>
               <CardContent className="space-y-2">
                 <RadioGroup
@@ -677,7 +679,7 @@ export default function SectionalTest({ user }: { user: any }) {
                       >
                         {String.fromCharCode(65 + idx)}
                       </div>
-                      <span className="text-sm">{opt}</span>
+                      <span className="text-sm"><Latex>{opt}</Latex></span>
                     </Label>
                   ))}
                 </RadioGroup>
@@ -839,7 +841,7 @@ export default function SectionalTest({ user }: { user: any }) {
                       )}
                     </div>
                     <p className="font-semibold text-sm mt-2">
-                      Q{idx + 1}. {q.questionText}
+                      Q{idx + 1}. <Latex>{q.questionText}</Latex>
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -855,14 +857,14 @@ export default function SectionalTest({ user }: { user: any }) {
                               : "bg-secondary/20 border-transparent"
                           }`}
                         >
-                          {opt}
+                         <Latex> {opt}</Latex>
                         </div>
                       ))}
                     </div>
                     {q.explanation && (
                       <div className="bg-secondary/30 p-3 rounded-lg text-sm">
                         <p className="font-bold text-xs uppercase mb-1">Explanation</p>
-                        <p className="text-muted-foreground">{q.explanation}</p>
+                        <p className="text-muted-foreground"><Latex>{q.explanation}</Latex></p>
                       </div>
                     )}
                   </CardContent>
