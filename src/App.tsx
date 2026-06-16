@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
  import SectionalTest from "./sectional-test";
+import "katex/dist/katex.min.css";
+import Latex from "react-latex-next";
 import { 
   BookOpen, 
   Video, 
@@ -982,7 +984,7 @@ function DailyTest({ user }: { user: UserProfile }) {
         <Card className="border-none shadow-xl">
           <CardHeader>
             <CardTitle className="text-xl md:text-2xl leading-relaxed">
-              {currentQ.questionText}
+         <Latex>{currentQ.questionText}</Latex>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -1006,7 +1008,7 @@ function DailyTest({ user }: { user: UserProfile }) {
                   }`}>
                     {String.fromCharCode(65 + idx)}
                   </div>
-                  <span className="text-base font-medium">{opt}</span>
+                  <span className="text-base font-medium"><Latex>{opt}</Latex></span>
                 </Label>
               ))}
             </RadioGroup>
@@ -1139,7 +1141,7 @@ const handleReview = async (res: any) => {
                     <span className="text-red-600 flex items-center gap-1 text-xs font-bold"><XCircle size={14} /> Incorrect</span>
                   )}
                 </div>
-                <CardTitle className="text-base">Q{idx + 1}: {q.questionText}</CardTitle>
+                <CardTitle className="text-base">Q{idx + 1}: <Latex>{q.questionText}</Latex></CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-1 gap-2">
@@ -1157,7 +1159,7 @@ const handleReview = async (res: any) => {
                 </div>
                 <div className="bg-secondary/30 p-4 rounded-lg text-sm">
                   <p className="font-bold mb-1">Explanation:</p>
-                  <p className="text-muted-foreground">{q.explanation}</p>
+                  <p className="text-muted-foreground"><Latex>{q.explanation}</Latex></p>
                 </div>
               </CardContent>
             </Card>
@@ -1547,7 +1549,7 @@ const questions = await response.json();
                     <div className="grid grid-cols-2 gap-2 mb-4">
                       {q.options.map((opt: string) => (
                         <div key={opt} className={`p-2 rounded border text-xs ${opt === q.correctAnswer ? "bg-green-50 border-green-200 font-bold" : ""}`}>
-                          {opt}
+                          <Latex>{opt}</Latex>
                         </div>
                       ))}
                     </div>
