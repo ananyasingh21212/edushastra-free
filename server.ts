@@ -16,6 +16,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "cat-prep-secret-key";
 
 // --- Google Sheets Configuration ---
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
+const MOCK_SPREADSHEET_ID = process.env.MOCK_SPREADSHEET_ID;
 const GOOGLE_EMAIL = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
 const GOOGLE_KEY = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
 
@@ -47,7 +48,12 @@ if (SPREADSHEET_ID && GOOGLE_EMAIL && GOOGLE_KEY) {
   if (!GOOGLE_EMAIL) console.warn("  - Missing GOOGLE_SERVICE_ACCOUNT_EMAIL");
   if (!GOOGLE_KEY) console.warn("  - Missing GOOGLE_PRIVATE_KEY");
 }
-
+if (MOCK_SPREADSHEET_ID) {
+  console.log(`- Mock Test Spreadsheet ID: ${MOCK_SPREADSHEET_ID}`);
+} else {
+  console.warn("⚠️ MOCK_SPREADSHEET_ID not set — Mock Test feature will use local fallback only.");
+}
+ 
 /**
  * Maps sheet names to column structures for automated serialization
  */
@@ -63,6 +69,10 @@ const SHEET_CONFIG: Record<string, string[]> = {
   SectionalQuestions: ["id", "section", "questionText", "options", "correctAnswer", "explanation", "difficulty", "passageId", "targetExam"],
   SectionalPassages:  ["id", "title", "text", "targetExam"],
   SectionalResults:   ["id", "studentId", "testId", "section", "totalScore", "correctAnswers", "wrongAnswers", "skippedQuestions", "timeSpent", "studentAnswers", "scaledScore", "submittedAt"],
+   MockTests:      ["id", "name", "totalDurationMinutes", "sectionDurationMinutes", "questionIds", "passageIds", "targetExam", "publishedDate"],
+  MockQuestions:  ["id", "section", "questionText", "options", "correctAnswer", "explanation", "difficulty", "passageId", "targetExam"],
+  MockPassages:   ["id", "title", "text", "targetExam"],
+  MockResults:    ["id", "studentId", "testId", "totalScore", "overallScaledScore", "percentile", "sectionResults", "studentAnswers", "timeSpent", "submittedAt"],
   Announcements: ["id", "title", "content", "createdDate", "createdBy"]
   
 };
@@ -71,39 +81,40 @@ const SHEET_CONFIG: Record<string, string[]> = {
  * Utility to fetch data from a Google Sheet
  * Robust version: uses row 1 as headers to map data correctly regardless of column order
  */
-async function fetchSheetData(range: string) {
-  if (!SPREADSHEET_ID || !GOOGLE_EMAIL || !GOOGLE_KEY) {
-    console.log(`Skipping Sheet read for [${range}]: Google Sheets not configured.`);
+async function fetchSheetData(range: string, spreadsheetId: string | undefined = SPREADSHEET_ID) {
+  if (!spreadsheetId || !GOOGLE_EMAIL || !GOOGLE_KEY) {
+    console.log(`Skipping Sheet read for [${range}]: Google Sheets not configured for this spreadsheet.`);
     return null;
   }
-
+ 
   try {
-    console.log(`Fetching data from sheet: ${range}...`);
+    console.log(`Fetching data from sheet: ${range} (spreadsheet: ${spreadsheetId})...`);
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${range}!A1:Z`, // Include header row to map columns
+      spreadsheetId,
+      range: `${range}!A1:Z`,
     });
-
+ 
     const allRows = response.data.values || [];
     if (allRows.length < 2) {
       console.log(`Sheet [${range}] is empty or only has headers.`);
       return [];
     }
-
+ 
     const headers = allRows[0].map((h: string) => h.toLowerCase().trim());
     const dataRows = allRows.slice(1);
     const expectedKeys = SHEET_CONFIG[range];
-
+ 
     console.log(`✅ Mapping ${dataRows.length} rows from ${range} using headers: [${headers.join(", ")}]`);
-
+ 
+    const jsonFields = ["options", "questionIds", "passageIds", "sectionScores", "studentAnswers", "sectionResults"];
+ 
     return dataRows.map(row => {
       const obj: any = {};
       expectedKeys.forEach(key => {
         const index = headers.indexOf(key.toLowerCase());
         if (index !== -1) {
           let val = row[index] || "";
-          // Auto-parse JSON strings for complex fields
-         if (["options", "questionIds", "passageIds", "sectionScores", "studentAnswers"].includes(key)) {
+          if (jsonFields.includes(key)) {
             if (typeof val === "string" && (val.startsWith("[") || val.startsWith("{"))) {
               try { val = JSON.parse(val); } catch (e) { val = []; }
             } else if (val === "") {
@@ -112,37 +123,34 @@ async function fetchSheetData(range: string) {
           }
           obj[key] = val;
         } else {
-          // If column is missing in sheet, use a default value
-          obj[key] = (["options", "questionIds", "sectionScores", "studentAnswers"].includes(key)) ? [] : "";
+          obj[key] = jsonFields.includes(key) ? [] : "";
         }
       });
       return obj;
     });
   } catch (err: any) {
-    console.error(`❌ Error fetching sheet ${range}:`, err.message);
+    console.error(`❌ Error fetching sheet ${range} (spreadsheet ${spreadsheetId}):`, err.message);
     return null;
   }
 }
-
 /**
  * Utility to append data to a Google Sheet
  * Header-aware: writes to columns based on the header row names
  */
-async function appendSheetData(range: string, data: any) {
-  if (!SPREADSHEET_ID || !GOOGLE_EMAIL || !GOOGLE_KEY) {
-    console.log(`Skipping Sheet append for [${range}]: Google Sheets not configured.`);
+async function appendSheetData(range: string, data: any, spreadsheetId: string | undefined = SPREADSHEET_ID) {
+  if (!spreadsheetId || !GOOGLE_EMAIL || !GOOGLE_KEY) {
+    console.log(`Skipping Sheet append for [${range}]: Google Sheets not configured for this spreadsheet.`);
     return;
   }
-
+ 
   try {
-    // 1. Get the current headers to know which column is which
     const headerRes = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId,
       range: `${range}!A1:Z1`,
     });
-
+ 
     const headers = (headerRes.data.values?.[0] || []).map((h: string) => h.toLowerCase().trim());
-    
+ 
     if (headers.length === 0) {
       console.warn(`⚠️ Sheet [${range}] appears to have no headers. Appending in default order.`);
       const keys = SHEET_CONFIG[range];
@@ -152,38 +160,35 @@ async function appendSheetData(range: string, data: any) {
         return val || "";
       });
       await sheets.spreadsheets.values.append({
-        spreadsheetId: SPREADSHEET_ID,
+        spreadsheetId,
         range: `${range}!A:A`,
         valueInputOption: "RAW",
         requestBody: { values: [row] },
       });
       return;
     }
-
-    // 2. Map data to the correct column indices
+ 
     const expectedKeys = SHEET_CONFIG[range];
     const row = headers.map(header => {
-      // Find the key that matches this header
       const key = expectedKeys.find(k => k.toLowerCase() === header);
       if (!key) return "";
       let val = data[key];
       if (typeof val === "object") val = JSON.stringify(val);
       return val || "";
     });
-
-    console.log(`Attempting to append row to sheet: ${range} (mapped to ${row.length} columns)...`);
+ 
+    console.log(`Attempting to append row to sheet: ${range} (spreadsheet ${spreadsheetId})...`);
     const res = await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
+      spreadsheetId,
       range: `${range}!A:A`,
       valueInputOption: "RAW",
       requestBody: { values: [row] },
     });
     console.log(`✅ Successfully appended to ${range}. Updated Cells: ${res.data.updates?.updatedCells}`);
   } catch (err: any) {
-    console.error(`❌ FAILED to append to sheet [${range}]: ${err.message}`);
+    console.error(`❌ FAILED to append to sheet [${range}] (spreadsheet ${spreadsheetId}): ${err.message}`);
   }
 }
-
 // Simple JSON-based storage for local fallback
 const DB_PATH = path.join(__dirname, "db.json");
 
@@ -201,6 +206,10 @@ interface DB {
 sectionalQuestions: any[];
 sectionalPassages: any[];
 sectionalResults: any[];
+  mockTests: any[];
+mockQuestions: any[];
+mockPassages: any[];
+mockResults: any[];
 }
 
 const initialDB: DB = {
@@ -258,6 +267,10 @@ const initialDB: DB = {
 sectionalQuestions: [],
 sectionalPassages: [],
 sectionalResults: [],
+  mockTests: [],
+mockQuestions: [],
+mockPassages: [],
+mockResults: [],
   announcements: [
     {
       id: "AN001",
@@ -616,7 +629,188 @@ app.get("/api/sectional-tests", authenticateToken, async (req: any, res) => {
     res.status(500).json({ message: "Failed to load sectional tests" });
   }
 });
+ // ─── GET /api/mock-tests  ── list of mock tests for this student's exam ──────
+app.get("/api/mock-tests", authenticateToken, async (req: any, res) => {
+  try {
+    let tests =
+      (await fetchSheetData("MockTests", MOCK_SPREADSHEET_ID)) || getLocalDB().mockTests;
  
+    if (req.user.role === "student") {
+      tests = tests.filter(
+        (t: any) => t.targetExam === "ALL" || t.targetExam === req.user.targetExam
+      );
+    }
+ 
+    const questions =
+      (await fetchSheetData("MockQuestions", MOCK_SPREADSHEET_ID)) || getLocalDB().mockQuestions;
+ 
+    const enriched = tests.map((t: any) => {
+      const qIds: string[] = Array.isArray(t.questionIds) ? t.questionIds : [];
+      return {
+        ...t,
+        questions: questions
+          .filter((q: any) => qIds.includes(q.id))
+          .map((q: any) => ({ id: q.id, section: q.section })), // minimal for list view
+      };
+    });
+ 
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to load mock tests" });
+  }
+});
+ 
+// ─── GET /api/mock-test/:id  ── full test with all questions + passages ──────
+app.get("/api/mock-test/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const tests =
+      (await fetchSheetData("MockTests", MOCK_SPREADSHEET_ID)) || getLocalDB().mockTests;
+    const test = tests.find((t: any) => t.id === id);
+ 
+    if (!test) return res.status(404).json({ message: "Mock test not found" });
+ 
+    const allQuestions =
+      (await fetchSheetData("MockQuestions", MOCK_SPREADSHEET_ID)) || getLocalDB().mockQuestions;
+    const allPassages =
+      (await fetchSheetData("MockPassages", MOCK_SPREADSHEET_ID)) || getLocalDB().mockPassages;
+ 
+    const qIds: string[] = Array.isArray(test.questionIds) ? test.questionIds : [];
+    const pIds: string[] = Array.isArray(test.passageIds) ? test.passageIds : [];
+ 
+    const questions = allQuestions.filter((q: any) => qIds.includes(q.id));
+    const passages = allPassages.filter((p: any) => pIds.includes(p.id));
+ 
+    res.json({ ...test, questions, passages });
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to load mock test" });
+  }
+});
+ 
+// ─── GET /api/mock-results  ── this student's past mock attempts ─────────────
+app.get("/api/mock-results", authenticateToken, async (req: any, res) => {
+  try {
+    const results =
+      (await fetchSheetData("MockResults", MOCK_SPREADSHEET_ID)) || getLocalDB().mockResults;
+    res.json(results.filter((r: any) => r.studentId === req.user.id));
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to load mock results" });
+  }
+});
+ 
+// ─── POST /api/mock-results  ── save a completed mock attempt ────────────────
+app.post("/api/mock-results", authenticateToken, async (req: any, res) => {
+  try {
+    const { testId } = req.body;
+ 
+    const allResults =
+      (await fetchSheetData("MockResults", MOCK_SPREADSHEET_ID)) || getLocalDB().mockResults;
+    const existing = allResults.find(
+      (r: any) => r.studentId === req.user.id && r.testId === testId
+    );
+    if (existing) {
+      return res.status(400).json({ message: "Already attempted this mock test." });
+    }
+ 
+    const result = {
+      ...req.body,
+      id: `MR${Date.now()}`,
+      studentId: req.user.id,
+      submittedAt: new Date().toISOString(),
+    };
+ 
+    await appendSheetData("MockResults", result, MOCK_SPREADSHEET_ID);
+ 
+    const db = getLocalDB();
+    db.mockResults.push(result);
+    saveLocalDB(db);
+ 
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to save mock result" });
+  }
+});
+ 
+// ─── Admin: POST /api/mock-tests  ── publish a new full-length mock test ─────
+app.post("/api/mock-tests", authenticateToken, async (req: any, res) => {
+  if (req.user.role !== "admin") return res.sendStatus(403);
+  try {
+    const {
+      name,
+      totalDurationMinutes,
+      sectionDurationMinutes,
+      questionIds,
+      passageIds,
+      targetExam,
+    } = req.body;
+ 
+    if (!name || !questionIds?.length) {
+      return res.status(400).json({ message: "name and questionIds are required" });
+    }
+ 
+    const newTest = {
+      id: `MT${Date.now()}`,
+      name,
+      totalDurationMinutes: totalDurationMinutes || 120,
+      sectionDurationMinutes: sectionDurationMinutes || 40,
+      questionIds,
+      passageIds: passageIds || [],
+      targetExam: targetExam || "CAT",
+      publishedDate: new Date().toISOString(),
+    };
+ 
+    await appendSheetData("MockTests", newTest, MOCK_SPREADSHEET_ID);
+ 
+    const db = getLocalDB();
+    db.mockTests.push(newTest);
+    saveLocalDB(db);
+ 
+    res.json({ success: true, testId: newTest.id });
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to publish mock test" });
+  }
+});
+ 
+// ─── Admin: POST /api/mock-questions  ── add questions ────────────────────────
+app.post("/api/mock-questions", authenticateToken, async (req: any, res) => {
+  if (req.user.role !== "admin") return res.sendStatus(403);
+  try {
+    const questions: any[] = req.body.questions;
+    for (const q of questions) {
+      const newQ = { ...q, id: q.id || `MQ${Date.now()}${Math.random().toString(36).substr(2, 4)}` };
+      await appendSheetData("MockQuestions", newQ, MOCK_SPREADSHEET_ID);
+      const db = getLocalDB();
+      db.mockQuestions.push(newQ);
+      saveLocalDB(db);
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to add mock questions" });
+  }
+});
+ 
+// ─── Admin: POST /api/mock-passages  ── add RC passages ───────────────────────
+app.post("/api/mock-passages", authenticateToken, async (req: any, res) => {
+  if (req.user.role !== "admin") return res.sendStatus(403);
+  try {
+    const passage = { ...req.body, id: req.body.id || `MP${Date.now()}` };
+    await appendSheetData("MockPassages", passage, MOCK_SPREADSHEET_ID);
+    const db = getLocalDB();
+    db.mockPassages.push(passage);
+    saveLocalDB(db);
+    res.json({ success: true, passageId: passage.id });
+  } catch (err: any) {
+    res.status(500).json({ message: "Failed to add mock passage" });
+  }
+});
+ 
+// ─── Admin: GET /api/mock-questions  ── list all mock questions ───────────────
+app.get("/api/mock-questions", authenticateToken, async (req: any, res) => {
+  if (req.user.role !== "admin") return res.sendStatus(403);
+  const questions =
+    (await fetchSheetData("MockQuestions", MOCK_SPREADSHEET_ID)) || getLocalDB().mockQuestions;
+  res.json(questions);
+});
 // ─── GET /api/sectional-test/:id  ── full test with questions + passages ─────
 app.get("/api/sectional-test/:id", authenticateToken, async (req, res) => {
   const { id } = req.params;
