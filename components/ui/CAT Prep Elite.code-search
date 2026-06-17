@@ -1,0 +1,27 @@
+# Query: CAT Prep Elite
+# Flags: WordMatch
+# ContextLines: 1
+
+5 results - 2 files
+
+index.html:
+  5      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  6:     <title>Edushastra</title>
+  7    </head>
+
+src/App.tsx:
+  172            </div>
+  173:           <span className="font-bold text-lg tracking-tight">Edushastra</span>
+  174          </div>
+
+  203                      </div>
+  204:                     <span className="font-bold text-xl tracking-tight">Edushastra</span>
+  205                    </div>
+
+  250              </div>
+  251:             <span className="font-bold text-xl tracking-tight">Edushastra</span>
+  252            </div>
+
+  345            </div>
+  346:           <CardTitle className="text-2xl font-bold tracking-tight">Edushastra</CardTitle>
+  347            <CardDescription>Login and Give wings to your CAT prep.</CardDescription>
