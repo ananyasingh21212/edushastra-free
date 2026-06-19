@@ -373,11 +373,11 @@ function LoginPage({ onLogin }: { onLogin: (u: UserProfile) => void }) {
               />
             </div>
           </CardContent>
-          <CardFooter>
-            <Button className="w-full h-11 text-base" type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
-            </Button>
-           <div className="text-center text-sm text-muted-foreground">
+         <CardFooter className="flex flex-col gap-3">
+  <Button className="w-full h-11 text-base" type="submit" disabled={loading}>
+    {loading ? "Signing in..." : "Sign In"}
+  </Button>
+  <div className="text-center text-sm text-muted-foreground">
     Don't have an account?{" "}
     <button 
       type="button"
@@ -387,7 +387,7 @@ function LoginPage({ onLogin }: { onLogin: (u: UserProfile) => void }) {
       Register Now
     </button>
   </div>
-          </CardFooter>
+</CardFooter>
         </form>
       </Card>
     </div>
