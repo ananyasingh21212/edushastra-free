@@ -377,6 +377,16 @@ function LoginPage({ onLogin }: { onLogin: (u: UserProfile) => void }) {
             <Button className="w-full h-11 text-base" type="submit" disabled={loading}>
               {loading ? "Signing in..." : "Sign In"}
             </Button>
+           <div className="text-center text-sm text-muted-foreground">
+    Don't have an account?{" "}
+    <button 
+      type="button"
+      onClick={() => window.location.href = "https://forms.gle/Q2sUWUmu22T7bkyg6"} 
+      className="text-primary hover:underline font-medium"
+    >
+      Register Now
+    </button>
+  </div>
           </CardFooter>
         </form>
       </Card>
