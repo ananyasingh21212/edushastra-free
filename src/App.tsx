@@ -344,7 +344,7 @@ function LoginPage({ onLogin }: { onLogin: (u: UserProfile) => void }) {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold tracking-tight">EduShastra</CardTitle>
-          <CardDescription>Login and Give wings to your CAT prep.</CardDescription>
+          <CardDescription>Give wings to your CAT prep.</CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
