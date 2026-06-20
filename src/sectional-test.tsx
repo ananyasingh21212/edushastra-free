@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { apiRequest } from "@/src/lib/api";
@@ -34,6 +35,7 @@ interface SectionalQuestion {
   explanation: string;
   difficulty: "Easy" | "Medium" | "Hard";
   passageId?: string; // for RC passages
+  questionType?: "MCQ" | "TITA"; // optional explicit flag; falls back to options.length
 }
 
 interface Passage {
@@ -113,6 +115,34 @@ function calcScaledScore(correct: number, wrong: number, total: number) {
   return Math.max(0, Math.round((raw / maxRaw) * 100));
 }
 
+// A question is TITA (type-in-the-answer) if it's explicitly flagged as such,
+// or if it simply has no options to choose from.
+function isTitaQuestion(q: SectionalQuestion) {
+  if (q.questionType) return q.questionType === "TITA";
+  return !Array.isArray(q.options) || q.options.filter(Boolean).length === 0;
+}
+
+// TITA answers are graded as a normalized string match (case-insensitive,
+// trimmed, with collapsed whitespace) so small formatting differences
+// (e.g. trailing spaces, "12" vs "12 ") don't count against the student.
+// For numeric-looking answers, also compare numerically so "12" === "12.0".
+function normalizeTitaAnswer(val: string) {
+  return (val || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isTitaCorrect(studentAns: string, correctAns: string) {
+  if (!studentAns) return false;
+  const a = normalizeTitaAnswer(studentAns);
+  const b = normalizeTitaAnswer(correctAns);
+  if (a === b) return true;
+  const numA = Number(a);
+  const numB = Number(b);
+  if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
+    return numA === numB;
+  }
+  return false;
+}
+
 // ─── Question Status Dot ──────────────────────────────────────────────────────
 
 function StatusDot({
@@ -156,6 +186,7 @@ export default function SectionalTest({ user }: { user: any }) {
   // Test state
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [titaDraft, setTitaDraft] = useState(""); // local input buffer for the current TITA question
   const [flagged, setFlagged] = useState<Set<string>>(new Set());
   const [timeLeft, setTimeLeft] = useState(0);
   const [submitted, setSubmitted] = useState(false);
@@ -220,6 +251,15 @@ export default function SectionalTest({ user }: { user: any }) {
     }
   }, [currentIdx, selectedTest, view]);
 
+  // Sync the local TITA input buffer whenever the current question changes
+  useEffect(() => {
+    if (!selectedTest || view !== "test") return;
+    const q = selectedTest.questions[currentIdx];
+    if (q && isTitaQuestion(q)) {
+      setTitaDraft(answers[q.id] || "");
+    }
+  }, [currentIdx, selectedTest, view]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Actions ──────────────────────────────────────────────────────────────
   const startTest = async (test: SectionalTest) => {
     // If already attempted, fetch full test for review then show result
@@ -265,6 +305,7 @@ export default function SectionalTest({ user }: { user: any }) {
     }
     setCurrentIdx(0);
     setAnswers({});
+    setTitaDraft("");
     setFlagged(new Set());
     setTimeLeft((selectedTest.durationMinutes || 40) * 60);
     setSubmitted(false);
@@ -284,8 +325,34 @@ export default function SectionalTest({ user }: { user: any }) {
     []
   );
 
+  // Commit the TITA draft into the answers map (called on change/blur/nav)
+  const commitTitaAnswer = useCallback((qId: string, val: string) => {
+    setAnswers((prev) => {
+      const next = { ...prev };
+      if (val.trim() === "") {
+        delete next[qId];
+      } else {
+        next[qId] = val;
+      }
+      return next;
+    });
+  }, []);
+
   const handleSubmit = useCallback(async () => {
     if (!selectedTest || submitted) return;
+
+    // Make sure the in-progress TITA draft is saved before grading
+    const currentQ = selectedTest.questions[currentIdx];
+    let finalAnswers = answers;
+    if (currentQ && isTitaQuestion(currentQ)) {
+      finalAnswers = { ...answers };
+      if (titaDraft.trim() === "") {
+        delete finalAnswers[currentQ.id];
+      } else {
+        finalAnswers[currentQ.id] = titaDraft;
+      }
+    }
+
     setSubmitted(true);
 
     let correct = 0,
@@ -293,10 +360,17 @@ export default function SectionalTest({ user }: { user: any }) {
       skipped = 0;
 
     selectedTest.questions.forEach((q) => {
-      const ans = answers[q.id];
-      if (!ans) skipped++;
-      else if (ans === q.correctAnswer) correct++;
-      else wrong++;
+      const ans = finalAnswers[q.id];
+      if (!ans) {
+        skipped++;
+      } else if (isTitaQuestion(q)) {
+        if (isTitaCorrect(ans, q.correctAnswer)) correct++;
+        else wrong++;
+      } else if (ans === q.correctAnswer) {
+        correct++;
+      } else {
+        wrong++;
+      }
     });
 
     const total = selectedTest.questions.length;
@@ -312,7 +386,7 @@ export default function SectionalTest({ user }: { user: any }) {
       wrongAnswers: wrong,
       skippedQuestions: skipped,
       timeSpent,
-      studentAnswers: answers,
+      studentAnswers: finalAnswers,
       scaledScore,
     };
 
@@ -322,15 +396,17 @@ export default function SectionalTest({ user }: { user: any }) {
         body: JSON.stringify(payload),
       });
       setResult(payload);
+      setAnswers(finalAnswers);
       setAttempts((prev) => ({ ...prev, [selectedTest.id]: payload }));
       setView("result");
       toast.success("Section submitted!");
     } catch (err: any) {
       toast.error("Failed to save result");
       setResult(payload);
+      setAnswers(finalAnswers);
       setView("result");
     }
-  }, [selectedTest, submitted, answers, timeLeft]);
+  }, [selectedTest, submitted, answers, timeLeft, currentIdx, titaDraft]);
 
   // ─── VIEWS ──────────────────────────────────────────────────────────────────
 
@@ -529,6 +605,7 @@ export default function SectionalTest({ user }: { user: any }) {
               {[
                 "This is a timed section test. The timer starts when you click Begin.",
                 "Each correct answer earns +3 marks. Each wrong answer deducts –1 mark. Unattempted questions carry 0 marks.",
+                "Some questions are Type-In-The-Answer (TITA) — there's no negative marking risk from guessing wrong, but you must type your answer in the box provided.",
                 "You can navigate between questions freely and flag any question for later review.",
                 "Once time is up, the section auto-submits. You can also submit early.",
                 "Answers cannot be changed after submission.",
@@ -567,6 +644,15 @@ export default function SectionalTest({ user }: { user: any }) {
     const meta = SECTION_META[selectedTest.section];
     const answeredCount = Object.keys(answers).length;
     const progress = (answeredCount / questions.length) * 100;
+    const currentIsTita = isTitaQuestion(currentQ);
+
+    const goToIdx = (newIdx: number) => {
+      // Persist whatever's in the TITA draft before navigating away
+      if (currentIsTita) {
+        commitTitaAnswer(currentQ.id, titaDraft);
+      }
+      setCurrentIdx(newIdx);
+    };
 
     return (
       <div className="flex flex-col h-full min-h-screen">
@@ -636,6 +722,11 @@ export default function SectionalTest({ user }: { user: any }) {
                     <Badge variant="outline" className="text-[10px]">
                       {currentQ.difficulty}
                     </Badge>
+                    {currentIsTita && (
+                      <Badge variant="outline" className="text-[10px] font-bold">
+                        TITA
+                      </Badge>
+                    )}
                   </div>
                   <button
                     onClick={() => toggleFlag(currentQ.id)}
@@ -654,35 +745,57 @@ export default function SectionalTest({ user }: { user: any }) {
 </p>
               </CardHeader>
               <CardContent className="space-y-2">
-                <RadioGroup
-                  value={answers[currentQ.id] || ""}
-                  onValueChange={(val) =>
-                    setAnswers((prev) => ({ ...prev, [currentQ.id]: val }))
-                  }
-                >
-                  {(Array.isArray(currentQ.options) ? currentQ.options : []).filter(Boolean).map((opt, idx) => (
-                    <Label
-                      key={opt}
-                      className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
-                        answers[currentQ.id] === opt
-                          ? `border-primary bg-blue-50 ring-1 ring-primary`
-                          : "border-border hover:border-primary/30 hover:bg-secondary/30"
-                      }`}
-                    >
-                      <RadioGroupItem value={opt} id={`opt-${idx}`} className="sr-only" />
-                      <div
-                        className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center font-bold text-xs border ${
+                {currentIsTita ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="tita-input" className="text-xs font-bold uppercase text-muted-foreground">
+                      Type your answer
+                    </Label>
+                    <Input
+                      id="tita-input"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="Enter your answer here"
+                      value={titaDraft}
+                      onChange={(e) => setTitaDraft(e.target.value)}
+                      onBlur={() => commitTitaAnswer(currentQ.id, titaDraft)}
+                      className="text-base p-4 h-auto rounded-xl border-2 focus-visible:ring-1 focus-visible:ring-primary"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      No options are given for this question — enter the numeric or text value you've calculated.
+                    </p>
+                  </div>
+                ) : (
+                  <RadioGroup
+                    value={answers[currentQ.id] || ""}
+                    onValueChange={(val) =>
+                      setAnswers((prev) => ({ ...prev, [currentQ.id]: val }))
+                    }
+                  >
+                    {(Array.isArray(currentQ.options) ? currentQ.options : []).filter(Boolean).map((opt, idx) => (
+                      <Label
+                        key={opt}
+                        className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
                           answers[currentQ.id] === opt
-                            ? "bg-primary text-primary-foreground border-primary"
-                            : "bg-secondary text-muted-foreground border-border"
+                            ? `border-primary bg-blue-50 ring-1 ring-primary`
+                            : "border-border hover:border-primary/30 hover:bg-secondary/30"
                         }`}
                       >
-                        {String.fromCharCode(65 + idx)}
-                      </div>
-                      <span className="text-sm"><Latex>{opt}</Latex></span>
-                    </Label>
-                  ))}
-                </RadioGroup>
+                        <RadioGroupItem value={opt} id={`opt-${idx}`} className="sr-only" />
+                        <div
+                          className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center font-bold text-xs border ${
+                            answers[currentQ.id] === opt
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-secondary text-muted-foreground border-border"
+                          }`}
+                        >
+                          {String.fromCharCode(65 + idx)}
+                        </div>
+                        <span className="text-sm"><Latex>{opt}</Latex></span>
+                      </Label>
+                    ))}
+                  </RadioGroup>
+                )}
               </CardContent>
             </Card>
 
@@ -690,7 +803,7 @@ export default function SectionalTest({ user }: { user: any }) {
             <div className="flex justify-between items-center">
               <Button
                 variant="outline"
-                onClick={() => setCurrentIdx((p) => Math.max(0, p - 1))}
+                onClick={() => goToIdx(Math.max(0, currentIdx - 1))}
                 disabled={currentIdx === 0}
                 className="gap-1"
               >
@@ -698,21 +811,27 @@ export default function SectionalTest({ user }: { user: any }) {
               </Button>
               <Button
                 variant="ghost"
-                onClick={() =>
+                onClick={() => {
+                  if (currentIsTita) {
+                    setTitaDraft("");
+                  }
                   setAnswers((prev) => {
                     const n = { ...prev };
                     delete n[currentQ.id];
                     return n;
-                  })
-                }
+                  });
+                }}
                 className="text-muted-foreground"
               >
                 Clear
               </Button>
               <Button
                 onClick={() => {
+                  if (currentIsTita) {
+                    commitTitaAnswer(currentQ.id, titaDraft);
+                  }
                   if (currentIdx < questions.length - 1) {
-                    setCurrentIdx((p) => p + 1);
+                    goToIdx(currentIdx + 1);
                   } else {
                     handleSubmit();
                   }
@@ -743,7 +862,7 @@ export default function SectionalTest({ user }: { user: any }) {
                       answered={!!answers[q.id]}
                       flagged={flagged.has(q.id)}
                       current={idx === currentIdx}
-                      onClick={() => setCurrentIdx(idx)}
+                      onClick={() => goToIdx(idx)}
                     />
                   ))}
                 </div>
@@ -807,7 +926,10 @@ export default function SectionalTest({ user }: { user: any }) {
           <div className="space-y-4">
             {questions.map((q, idx) => {
               const studentAns = result.studentAnswers[q.id];
-              const isCorrect = studentAns === q.correctAnswer;
+              const qIsTita = isTitaQuestion(q);
+              const isCorrect = qIsTita
+                ? isTitaCorrect(studentAns, q.correctAnswer)
+                : studentAns === q.correctAnswer;
               const isSkipped = !studentAns;
               return (
                 <Card
@@ -825,6 +947,9 @@ export default function SectionalTest({ user }: { user: any }) {
                       <div className="flex gap-2">
                         <Badge variant="outline">{q.section}</Badge>
                         <Badge variant="outline" className="text-[10px]">{q.difficulty}</Badge>
+                        {qIsTita && (
+                          <Badge variant="outline" className="text-[10px] font-bold">TITA</Badge>
+                        )}
                       </div>
                       {isCorrect ? (
                         <span className="text-green-600 flex items-center gap-1 text-xs font-bold">
@@ -845,22 +970,43 @@ export default function SectionalTest({ user }: { user: any }) {
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="grid gap-1.5">
-                      {q.options.map((opt) => (
-                        <div
-                          key={opt}
-                          className={`px-3 py-2 rounded-lg text-sm border ${
-                            opt === q.correctAnswer
-                              ? "bg-green-50 border-green-200 text-green-800 font-medium"
-                              : opt === studentAns
-                              ? "bg-red-50 border-red-200 text-red-800"
-                              : "bg-secondary/20 border-transparent"
-                          }`}
-                        >
-                         <Latex> {opt}</Latex>
+                    {qIsTita ? (
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        <div className="px-3 py-2 rounded-lg text-sm border bg-secondary/20 border-transparent">
+                          <p className="text-[10px] font-bold uppercase text-muted-foreground mb-0.5">
+                            Your answer
+                          </p>
+                          <p className={isSkipped ? "text-muted-foreground italic" : isCorrect ? "text-green-800 font-medium" : "text-red-800"}>
+                            {isSkipped ? "Not attempted" : <Latex>{studentAns}</Latex>}
+                          </p>
                         </div>
-                      ))}
-                    </div>
+                        <div className="px-3 py-2 rounded-lg text-sm border bg-green-50 border-green-200">
+                          <p className="text-[10px] font-bold uppercase text-muted-foreground mb-0.5">
+                            Correct answer
+                          </p>
+                          <p className="text-green-800 font-medium">
+                            <Latex>{q.correctAnswer}</Latex>
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid gap-1.5">
+                        {q.options.map((opt) => (
+                          <div
+                            key={opt}
+                            className={`px-3 py-2 rounded-lg text-sm border ${
+                              opt === q.correctAnswer
+                                ? "bg-green-50 border-green-200 text-green-800 font-medium"
+                                : opt === studentAns
+                                ? "bg-red-50 border-red-200 text-red-800"
+                                : "bg-secondary/20 border-transparent"
+                            }`}
+                          >
+                           <Latex> {opt}</Latex>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {q.explanation && (
                       <div className="bg-secondary/30 p-3 rounded-lg text-sm">
                         <p className="font-bold text-xs uppercase mb-1">Explanation</p>
