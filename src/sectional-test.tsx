@@ -101,7 +101,22 @@ const SECTION_META = {
 };
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
-
+// Renders text with \n\n-separated paragraphs as separate <p> blocks,
+// same behaviour as the passage renderer, but each paragraph still
+// supports LaTeX.
+function MultiParagraphLatex({ text, className }: { text: string; className?: string }) {
+  if (!text) return null;
+  const paras = text.split("\n\n");
+  return (
+    <>
+      {paras.map((para, i) => (
+        <p key={i} className={i > 0 ? `mt-2 ${className || ""}` : className}>
+          <Latex>{para}</Latex>
+        </p>
+      ))}
+    </>
+  );
+}
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -741,7 +756,7 @@ export default function SectionalTest({ user }: { user: any }) {
                   </button>
                 </div>
                 <p className="text-base font-semibold leading-relaxed mt-3">
-  <Latex>{currentQ.questionText}</Latex>
+ <MultiParagraphLatex text={currentQ.questionText} />
 </p>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -966,7 +981,9 @@ export default function SectionalTest({ user }: { user: any }) {
                       )}
                     </div>
                     <p className="font-semibold text-sm mt-2">
-                      Q{idx + 1}. <Latex>{q.questionText}</Latex>
+                    <span>Q{idx + 1}. </span>
+  <MultiParagraphLatex text={q.questionText} />
+
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3">
@@ -1010,7 +1027,9 @@ export default function SectionalTest({ user }: { user: any }) {
                     {q.explanation && (
                       <div className="bg-secondary/30 p-3 rounded-lg text-sm">
                         <p className="font-bold text-xs uppercase mb-1">Explanation</p>
-                        <p className="text-muted-foreground"><Latex>{q.explanation}</Latex></p>
+                       <div className="text-muted-foreground">
+  <MultiParagraphLatex text={q.explanation} />
+</div>
                       </div>
                     )}
                   </CardContent>
