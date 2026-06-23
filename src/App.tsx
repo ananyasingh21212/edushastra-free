@@ -498,7 +498,7 @@ function Dashboard({ user, setActiveTab }: { user: UserProfile, setActiveTab: (t
                   <CardDescription className="text-xs">{new Date(ann.createdDate).toLocaleDateString()}</CardDescription>
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
-                  <p className="text-sm text-muted-foreground">{ann.content}</p>
+               <img src={ann.content} alt="Announcement image" className="w-full h-auto rounded-md object-cover" />
                 </CardContent>
               </Card>
             ))}
