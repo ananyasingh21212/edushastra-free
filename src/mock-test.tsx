@@ -1010,7 +1010,7 @@ export default function MockTest({ user }: { user: any }) {
                   </button>
                 </div>
                 <p className="text-base font-semibold leading-relaxed mt-3">
-                  <Latex>{currentQ.questionText}</Latex>
+                  <MultiParagraphLatex text={currentQ.questionText} />
                 </p>
               </CardHeader>
               <CardContent className="space-y-2">
@@ -1273,7 +1273,7 @@ export default function MockTest({ user }: { user: any }) {
                     )}
 
                     <p className="font-semibold text-sm mt-2">
-                      Q{idx + 1}. <Latex>{q.questionText}</Latex>
+                      Q{idx + 1}. <MultiParagraphLatex text={q.questionText} />
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3">
