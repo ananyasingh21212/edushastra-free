@@ -23,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "sonner";
 import { apiRequest } from "@/src/lib/api";
@@ -40,6 +41,7 @@ interface MockQuestion {
   explanation: string;
   difficulty: "Easy" | "Medium" | "Hard";
   passageId?: string;
+  questionType?: "MCQ" | "TITA"; // optional explicit flag; falls back to options.length
 }
 
 interface Passage {
@@ -120,6 +122,22 @@ const SECTION_META: Record<SectionName, {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Renders text with \n\n-separated paragraphs as separate <p> blocks, each
+// still rendered through Latex so inline math/formatting keeps working.
+function MultiParagraphLatex({ text, className }: { text: string; className?: string }) {
+  if (!text) return null;
+  const paras = text.split("\n\n");
+  return (
+    <>
+      {paras.map((para, i) => (
+        <p key={i} className={i > 0 ? `mt-2 ${className || ""}` : className}>
+          <Latex>{para}</Latex>
+        </p>
+      ))}
+    </>
+  );
+}
+
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -165,6 +183,34 @@ function estimatePercentile(compositeScaled: number): number {
   }
 
   return 99.99;
+}
+
+// A question is TITA (type-in-the-answer) if it's explicitly flagged as such,
+// or if it simply has no options to choose from.
+function isTitaQuestion(q: MockQuestion) {
+  if (q.questionType) return q.questionType === "TITA";
+  return !Array.isArray(q.options) || q.options.filter(Boolean).length === 0;
+}
+
+// TITA answers are graded as a normalized string match (case-insensitive,
+// trimmed, with collapsed whitespace) so small formatting differences
+// (e.g. trailing spaces, "12" vs "12 ") don't count against the student.
+// For numeric-looking answers, also compare numerically so "12" === "12.0".
+function normalizeTitaAnswer(val: string) {
+  return (val || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isTitaCorrect(studentAns: string, correctAns: string) {
+  if (!studentAns) return false;
+  const a = normalizeTitaAnswer(studentAns);
+  const b = normalizeTitaAnswer(correctAns);
+  if (a === b) return true;
+  const numA = Number(a);
+  const numB = Number(b);
+  if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
+    return numA === numB;
+  }
+  return false;
 }
 
 // ─── Image URL Detection ───────────────────────────────────────────────────────
@@ -357,6 +403,7 @@ export default function MockTest({ user }: { user: any }) {
   const [sectionIdx, setSectionIdx] = useState(0);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [titaDraft, setTitaDraft] = useState(""); // local input buffer for the current TITA question
   const [flagged, setFlagged] = useState<Set<string>>(new Set());
   const [timeLeft, setTimeLeft] = useState(0);
   const [submitted, setSubmitted] = useState(false);
@@ -420,6 +467,16 @@ export default function MockTest({ user }: { user: any }) {
     }
   }, [currentIdx, sectionIdx, selectedTest, view, sectionQuestions]);
 
+  // Sync the local TITA input buffer whenever the current question changes
+  useEffect(() => {
+    if (!selectedTest || view !== "test") return;
+    const qs = sectionQuestions(selectedTest, SECTION_ORDER[sectionIdx]);
+    const q = qs[currentIdx];
+    if (q && isTitaQuestion(q)) {
+      setTitaDraft(answers[q.id] || "");
+    }
+  }, [currentIdx, sectionIdx, selectedTest, view]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const startTest = async (test: MockTest) => {
     if (attempts[test.id]) {
       setTestLoading(true);
@@ -462,6 +519,7 @@ export default function MockTest({ user }: { user: any }) {
     }
     setSectionIdx(idx);
     setCurrentIdx(0);
+    setTitaDraft("");
     setFlagged(new Set());
     setTimeLeft((selectedTest.sectionDurationMinutes || 40) * 60);
     setSubmitted(false);
@@ -484,8 +542,39 @@ export default function MockTest({ user }: { user: any }) {
     });
   }, []);
 
+  // Commit the TITA draft into the answers map (called on change/blur/nav)
+  const commitTitaAnswer = useCallback((qId: string, val: string) => {
+    setAnswers((prev) => {
+      const next = { ...prev };
+      if (val.trim() === "") {
+        delete next[qId];
+      } else {
+        next[qId] = val;
+      }
+      return next;
+    });
+  }, []);
+
+  const goToIdx = (newIdx: number, questions: MockQuestion[]) => {
+    const currentQ = questions[currentIdx];
+    if (currentQ && isTitaQuestion(currentQ)) {
+      commitTitaAnswer(currentQ.id, titaDraft);
+    }
+    setCurrentIdx(newIdx);
+  };
+
   const handleSectionEnd = useCallback(() => {
     if (submitted) return;
+
+    // Make sure the in-progress TITA draft for the current question is saved
+    if (selectedTest) {
+      const qs = sectionQuestions(selectedTest, SECTION_ORDER[sectionIdx]);
+      const currentQ = qs[currentIdx];
+      if (currentQ && isTitaQuestion(currentQ)) {
+        commitTitaAnswer(currentQ.id, titaDraft);
+      }
+    }
+
     setSubmitted(true);
 
     const isLastSection = sectionIdx === SECTION_ORDER.length - 1;
@@ -494,7 +583,7 @@ export default function MockTest({ user }: { user: any }) {
     } else {
       setView("section-break");
     }
-  }, [submitted, sectionIdx]);
+  }, [submitted, sectionIdx, selectedTest, currentIdx, titaDraft]);
 
   const proceedToNextSection = () => {
     const nextIdx = sectionIdx + 1;
@@ -509,9 +598,16 @@ export default function MockTest({ user }: { user: any }) {
       let correct = 0, wrong = 0, skipped = 0;
       qs.forEach((q) => {
         const ans = answers[q.id];
-        if (!ans) skipped++;
-        else if (ans === q.correctAnswer) correct++;
-        else wrong++;
+        if (!ans) {
+          skipped++;
+        } else if (isTitaQuestion(q)) {
+          if (isTitaCorrect(ans, q.correctAnswer)) correct++;
+          else wrong++;
+        } else if (ans === q.correctAnswer) {
+          correct++;
+        } else {
+          wrong++;
+        }
       });
       const score = correct * 3 - wrong;
       const scaledScore = calcScaledScore(correct, wrong, qs.length);
@@ -743,6 +839,7 @@ export default function MockTest({ user }: { user: any }) {
               {[
                 "This mock has 3 sections, each individually timed. You cannot go back to a previous section once it ends.",
                 "Each correct answer earns +3 marks. Each wrong answer deducts –1 mark. Unattempted questions carry 0 marks.",
+                "Some questions are Type-In-The-Answer (TITA) — there's no negative marking risk from guessing wrong, but you must type your answer in the box provided.",
                 "Within a section, you can navigate freely between questions and flag any for review.",
                 "When a section's timer hits zero, it auto-submits and the next section begins immediately.",
                 "After the final section, you'll see your composite score, percentile estimate, and a full review.",
@@ -823,6 +920,7 @@ export default function MockTest({ user }: { user: any }) {
     const meta = SECTION_META[currentSection];
     const answeredInSection = questions.filter((q) => answers[q.id]).length;
     const progress = (answeredInSection / questions.length) * 100;
+    const currentIsTita = isTitaQuestion(currentQ);
 
     return (
       <div className="flex flex-col h-full min-h-screen">
@@ -885,7 +983,7 @@ export default function MockTest({ user }: { user: any }) {
                   </span>
                 </CardHeader>
                 <CardContent>
-                  {/* ✅ Updated: renders both text paragraphs and images */}
+                  {/* ✅ Renders both text paragraphs and images */}
                   <div className="text-sm leading-relaxed text-muted-foreground max-h-72 overflow-y-auto pr-2">
                     <PassageContent text={activePassage.text} />
                   </div>
@@ -903,6 +1001,11 @@ export default function MockTest({ user }: { user: any }) {
                     <Badge variant="outline" className="text-[10px]">
                       {currentQ.difficulty}
                     </Badge>
+                    {currentIsTita && (
+                      <Badge variant="outline" className="text-[10px] font-bold">
+                        TITA
+                      </Badge>
+                    )}
                   </div>
                   <button
                     onClick={() => toggleFlag(currentQ.id)}
@@ -917,46 +1020,68 @@ export default function MockTest({ user }: { user: any }) {
                   </button>
                 </div>
                 <p className="text-base font-semibold leading-relaxed mt-3">
-                  <Latex>{currentQ.questionText}</Latex>
+                  <MultiParagraphLatex text={currentQ.questionText} />
                 </p>
               </CardHeader>
               <CardContent className="space-y-2">
-                <RadioGroup
-                  value={answers[currentQ.id] || ""}
-                  onValueChange={(val) => setAnswers((prev) => ({ ...prev, [currentQ.id]: val }))}
-                >
-                  {(Array.isArray(currentQ.options) ? currentQ.options : [])
-                    .filter(Boolean)
-                    .map((opt, idx) => (
-                      <Label
-                        key={opt}
-                        className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
-                          answers[currentQ.id] === opt
-                            ? "border-primary bg-blue-50 ring-1 ring-primary"
-                            : "border-border hover:border-primary/30 hover:bg-secondary/30"
-                        }`}
-                      >
-                        <RadioGroupItem value={opt} id={`opt-${idx}`} className="sr-only" />
-                        <div
-                          className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center font-bold text-xs border ${
+                {currentIsTita ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="tita-input" className="text-xs font-bold uppercase text-muted-foreground">
+                      Type your answer
+                    </Label>
+                    <Input
+                      id="tita-input"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="Enter your answer here"
+                      value={titaDraft}
+                      onChange={(e) => setTitaDraft(e.target.value)}
+                      onBlur={() => commitTitaAnswer(currentQ.id, titaDraft)}
+                      className="text-base p-4 h-auto rounded-xl border-2 focus-visible:ring-1 focus-visible:ring-primary"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      No options are given for this question — enter the numeric or text value you've calculated.
+                    </p>
+                  </div>
+                ) : (
+                  <RadioGroup
+                    value={answers[currentQ.id] || ""}
+                    onValueChange={(val) => setAnswers((prev) => ({ ...prev, [currentQ.id]: val }))}
+                  >
+                    {(Array.isArray(currentQ.options) ? currentQ.options : [])
+                      .filter(Boolean)
+                      .map((opt, idx) => (
+                        <Label
+                          key={opt}
+                          className={`flex items-center gap-3 p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
                             answers[currentQ.id] === opt
-                              ? "bg-primary text-primary-foreground border-primary"
-                              : "bg-secondary text-muted-foreground border-border"
+                              ? "border-primary bg-blue-50 ring-1 ring-primary"
+                              : "border-border hover:border-primary/30 hover:bg-secondary/30"
                           }`}
                         >
-                          {String.fromCharCode(65 + idx)}
-                        </div>
-                        <span className="text-sm"><Latex>{opt}</Latex></span>
-                      </Label>
-                    ))}
-                </RadioGroup>
+                          <RadioGroupItem value={opt} id={`opt-${idx}`} className="sr-only" />
+                          <div
+                            className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center font-bold text-xs border ${
+                              answers[currentQ.id] === opt
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-secondary text-muted-foreground border-border"
+                            }`}
+                          >
+                            {String.fromCharCode(65 + idx)}
+                          </div>
+                          <span className="text-sm"><Latex>{opt}</Latex></span>
+                        </Label>
+                      ))}
+                  </RadioGroup>
+                )}
               </CardContent>
             </Card>
 
             <div className="flex justify-between items-center">
               <Button
                 variant="outline"
-                onClick={() => setCurrentIdx((p) => Math.max(0, p - 1))}
+                onClick={() => goToIdx(Math.max(0, currentIdx - 1), questions)}
                 disabled={currentIdx === 0}
                 className="gap-1"
               >
@@ -964,21 +1089,27 @@ export default function MockTest({ user }: { user: any }) {
               </Button>
               <Button
                 variant="ghost"
-                onClick={() =>
+                onClick={() => {
+                  if (currentIsTita) {
+                    setTitaDraft("");
+                  }
                   setAnswers((prev) => {
                     const n = { ...prev };
                     delete n[currentQ.id];
                     return n;
-                  })
-                }
+                  });
+                }}
                 className="text-muted-foreground"
               >
                 Clear
               </Button>
               <Button
                 onClick={() => {
+                  if (currentIsTita) {
+                    commitTitaAnswer(currentQ.id, titaDraft);
+                  }
                   if (currentIdx < questions.length - 1) {
-                    setCurrentIdx((p) => p + 1);
+                    goToIdx(currentIdx + 1, questions);
                   } else {
                     handleSectionEnd();
                   }
@@ -1013,7 +1144,7 @@ export default function MockTest({ user }: { user: any }) {
                       answered={!!answers[q.id]}
                       flagged={flagged.has(q.id)}
                       current={idx === currentIdx}
-                      onClick={() => setCurrentIdx(idx)}
+                      onClick={() => goToIdx(idx, questions)}
                     />
                   ))}
                 </div>
@@ -1095,7 +1226,10 @@ export default function MockTest({ user }: { user: any }) {
           <div className="space-y-4">
             {questions.map((q, idx) => {
               const studentAns = result.studentAnswers[q.id];
-              const isCorrect = studentAns === q.correctAnswer;
+              const qIsTita = isTitaQuestion(q);
+              const isCorrect = qIsTita
+                ? isTitaCorrect(studentAns, q.correctAnswer)
+                : studentAns === q.correctAnswer;
               const isSkipped = !studentAns;
 
               // Find the passage for this question if any
@@ -1119,6 +1253,11 @@ export default function MockTest({ user }: { user: any }) {
                         <Badge variant="outline" className="text-[10px]">
                           {q.difficulty}
                         </Badge>
+                        {qIsTita && (
+                          <Badge variant="outline" className="text-[10px] font-bold">
+                            TITA
+                          </Badge>
+                        )}
                       </div>
                       {isCorrect ? (
                         <span className="text-green-600 flex items-center gap-1 text-xs font-bold">
@@ -1146,30 +1285,54 @@ export default function MockTest({ user }: { user: any }) {
                     )}
 
                     <p className="font-semibold text-sm mt-2">
-                      Q{idx + 1}. <Latex>{q.questionText}</Latex>
+                      <span>Q{idx + 1}. </span>
+                      <MultiParagraphLatex text={q.questionText} />
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="grid gap-1.5">
-                      {(Array.isArray(q.options) ? q.options : []).filter(Boolean).map((opt) => (
-                        <div
-                          key={opt}
-                          className={`px-3 py-2 rounded-lg text-sm border ${
-                            opt === q.correctAnswer
-                              ? "bg-green-50 border-green-200 text-green-800 font-medium"
-                              : opt === studentAns
-                              ? "bg-red-50 border-red-200 text-red-800"
-                              : "bg-secondary/20 border-transparent"
-                          }`}
-                        >
-                          <Latex>{opt}</Latex>
+                    {qIsTita ? (
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        <div className="px-3 py-2 rounded-lg text-sm border bg-secondary/20 border-transparent">
+                          <p className="text-[10px] font-bold uppercase text-muted-foreground mb-0.5">
+                            Your answer
+                          </p>
+                          <p className={isSkipped ? "text-muted-foreground italic" : isCorrect ? "text-green-800 font-medium" : "text-red-800"}>
+                            {isSkipped ? "Not attempted" : <Latex>{studentAns}</Latex>}
+                          </p>
                         </div>
-                      ))}
-                    </div>
+                        <div className="px-3 py-2 rounded-lg text-sm border bg-green-50 border-green-200">
+                          <p className="text-[10px] font-bold uppercase text-muted-foreground mb-0.5">
+                            Correct answer
+                          </p>
+                          <p className="text-green-800 font-medium">
+                            <Latex>{q.correctAnswer}</Latex>
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid gap-1.5">
+                        {(Array.isArray(q.options) ? q.options : []).filter(Boolean).map((opt) => (
+                          <div
+                            key={opt}
+                            className={`px-3 py-2 rounded-lg text-sm border ${
+                              opt === q.correctAnswer
+                                ? "bg-green-50 border-green-200 text-green-800 font-medium"
+                                : opt === studentAns
+                                ? "bg-red-50 border-red-200 text-red-800"
+                                : "bg-secondary/20 border-transparent"
+                            }`}
+                          >
+                            <Latex>{opt}</Latex>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {q.explanation && (
                       <div className="bg-secondary/30 p-3 rounded-lg text-sm">
                         <p className="font-bold text-xs uppercase mb-1">Explanation</p>
-                        <p className="text-muted-foreground"><Latex>{q.explanation}</Latex></p>
+                        <div className="text-muted-foreground">
+                          <MultiParagraphLatex text={q.explanation} />
+                        </div>
                       </div>
                     )}
                   </CardContent>
