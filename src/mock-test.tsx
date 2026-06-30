@@ -730,7 +730,7 @@ export default function MockTest({ user }: { user: any }) {
                       </span></div>
                      <div className="flex items-center justify-between text-xs mt-3 pt-3 border-t border-border">
                        <span className="font-semibold text-emerald-600">
-                        {(t.studentsAttempted || 0).toLocaleString()}
+                      {(selectedTest.studentsAttempted || 0).toLocaleString()}
                       </span>
                     </div>
                   </CardHeader>
