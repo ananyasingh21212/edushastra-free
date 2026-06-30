@@ -58,7 +58,7 @@ interface MockTest {
   questions: MockQuestion[];
   passages?: Passage[];
   publishedDate?: string;
-  studentsAttempted?: number;
+  studentsAttempted?: string;
 }
 
 interface SectionResult {
@@ -729,7 +729,7 @@ export default function MockTest({ user }: { user: any }) {
                         👥 Students Attempted
                       </span>
                       <span className="font-semibold text-emerald-600">
-                        {(t.studentsAttempted || 0).toLocaleString()}+
+                        {(t.studentsAttempted || 0).toLocaleString()}
                       </span>
                     </div>
                   </CardHeader>
@@ -802,7 +802,7 @@ export default function MockTest({ user }: { user: any }) {
                 👥 Students Attempted
               </span>
               <span className="font-semibold text-emerald-600">
-                {(selectedTest.studentsAttempted || 0).toLocaleString()}+
+                {(selectedTest.studentsAttempted || 0).toLocaleString()}
               </span>
             </div>
           </CardHeader>
@@ -1359,7 +1359,7 @@ export default function MockTest({ user }: { user: any }) {
             <h2 className="text-2xl font-black mt-1">{selectedTest.name}</h2>
             <div className="flex items-center justify-between text-xs mt-3 pt-3 border-t border-white/20">
               <span className="opacity-80 flex items-center gap-1">👥 Students Attempted</span>
-              <span className="font-semibold">{(selectedTest.studentsAttempted || 0).toLocaleString()}+</span>
+              <span className="font-semibold">{(selectedTest.studentsAttempted || 0).toLocaleString()}</span>
             </div>
           </div>
           <CardContent className="pt-6">
