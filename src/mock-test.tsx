@@ -724,15 +724,6 @@ export default function MockTest({ user }: { user: any }) {
                       )}
                     </div>
                     <CardTitle className="text-base mt-2">{t.name}</CardTitle>
-                    <div className="flex items-center justify-between text-xs mt-3 pt-3 border-t border-border">
-                      <span className="text-muted-foreground flex items-center gap-1">
-                        👥 Students Attempted
-                      </span></div>
-                     <div className="flex items-center justify-between text-xs mt-3 pt-3 border-t border-border">
-                       <span className="font-semibold text-emerald-600">
-                      {(selectedTest.studentsAttempted || 0).toLocaleString()}
-                      </span>
-                    </div>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     <div className="flex gap-4 text-xs text-muted-foreground">
