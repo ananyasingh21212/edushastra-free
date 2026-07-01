@@ -989,10 +989,7 @@ export default function MockTest({ user }: { user: any }) {
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-bold px-2 py-0.5 rounded ${meta.lightColor} ${meta.textColor}`}>
                       Q {currentIdx + 1} / {questions.length}
-                    </span>
-                    <Badge variant="outline" className="text-[10px]">
-                      {currentQ.difficulty}
-                    </Badge>
+                    </span>      
                     {currentIsTita && (
                       <Badge variant="outline" className="text-[10px] font-bold">
                         TITA
