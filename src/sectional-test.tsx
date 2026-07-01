@@ -157,7 +157,148 @@ function isTitaCorrect(studentAns: string, correctAns: string) {
   }
   return false;
 }
+onst IMAGE_URL_REGEX = /(?:!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)|\[image:\s*(https?:\/\/[^\]]+)\]|(https?:\/\/\S+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s]*)?(?=#|\s|$)))/gi;
 
+type PassageSegment =
+  | { type: "text"; content: string }
+  | { type: "image"; url: string; alt?: string };
+
+/**
+ * Parses a passage text string into an array of text and image segments.
+ * Handles:
+ *   - Bare image URLs:  https://example.com/chart.png
+ *   - Markdown images:  ![alt text](https://example.com/chart.png)
+ *   - Tagged images:    [image: https://example.com/chart.png]
+ */
+function parsePassageSegments(text: string): PassageSegment[] {
+  const normalized = text.replace(/\\n/g, "\n");
+  const segments: PassageSegment[] = [];
+  let lastIndex = 0;
+
+  // Reset regex state
+  IMAGE_URL_REGEX.lastIndex = 0;
+
+  let match: RegExpExecArray | null;
+  while ((match = IMAGE_URL_REGEX.exec(normalized)) !== null) {
+    const [fullMatch, mdAlt, mdUrl, tagUrl, bareUrl] = match;
+    const url = mdUrl || tagUrl || bareUrl;
+    const alt = mdAlt || undefined;
+
+    // Push any text before this match
+    if (match.index > lastIndex) {
+      segments.push({ type: "text", content: normalized.slice(lastIndex, match.index) });
+    }
+
+    segments.push({ type: "image", url: url.trim(), alt });
+    lastIndex = match.index + fullMatch.length;
+  }
+
+  // Push remaining text
+  if (lastIndex < normalized.length) {
+    segments.push({ type: "text", content: normalized.slice(lastIndex) });
+  }
+
+  return segments;
+}
+
+// ─── Passage Image Lightbox ────────────────────────────────────────────────────
+
+function PassageImage({ url, alt }: { url: string; alt?: string }) {
+  const [lightbox, setLightbox] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+
+  if (error) {
+    return (
+      <div className="my-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-xs text-red-600">
+        <span>⚠️ Image failed to load:</span>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="underline truncate max-w-[200px]">{url}</a>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="my-3 relative group">
+        {!loaded && (
+          <div className="h-24 rounded-lg bg-secondary/40 animate-pulse flex items-center justify-center text-xs text-muted-foreground">
+            Loading image…
+          </div>
+        )}
+        <img
+          src={url}
+          alt={alt || "Passage image"}
+          className={`max-w-full rounded-lg border border-border shadow-sm cursor-zoom-in transition-opacity ${loaded ? "opacity-100" : "opacity-0 absolute inset-0"}`}
+          style={{ maxHeight: "300px", objectFit: "contain" }}
+          onLoad={() => setLoaded(true)}
+          onError={() => { setLoaded(true); setError(true); }}
+          onClick={() => setLightbox(true)}
+        />
+        {loaded && !error && (
+          <button
+            onClick={() => setLightbox(true)}
+            className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+            title="View full size"
+          >
+            <ZoomIn size={14} />
+          </button>
+        )}
+        {alt && loaded && !error && (
+          <p className="text-[11px] text-center text-muted-foreground mt-1 italic">{alt}</p>
+        )}
+      </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightbox(false)}
+        >
+          <button
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 text-white hover:bg-white/20"
+            onClick={() => setLightbox(false)}
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={url}
+            alt={alt || "Passage image"}
+            className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+// ─── Passage Renderer ──────────────────────────────────────────────────────────
+
+function PassageContent({ text }: { text: string }) {
+  const segments = parsePassageSegments(text);
+
+  return (
+    <div className="space-y-1">
+      {segments.map((seg, i) => {
+        if (seg.type === "image") {
+          return <PassageImage key={i} url={seg.url} alt={seg.alt} />;
+        }
+        // Split text segment into paragraphs
+        return (
+          <div key={i}>
+            {seg.content
+              .split("\n\n")
+              .map((para, j) => para.trim())
+              .filter(Boolean)
+              .map((para, j) => (
+                <p key={j} className="mb-2 last:mb-0">{para}</p>
+              ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 // ─── Question Status Dot ──────────────────────────────────────────────────────
 
 function StatusDot({
