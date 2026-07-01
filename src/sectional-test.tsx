@@ -875,9 +875,6 @@ export default function SectionalTest({ user }: { user: any }) {
                     <span className={`text-xs font-bold px-2 py-0.5 rounded ${meta.lightColor} ${meta.textColor}`}>
                       Q {currentIdx + 1} / {questions.length}
                     </span>
-                    <Badge variant="outline" className="text-[10px]">
-                      {currentQ.difficulty}
-                    </Badge>
                     {currentIsTita && (
                       <Badge variant="outline" className="text-[10px] font-bold">
                         TITA
