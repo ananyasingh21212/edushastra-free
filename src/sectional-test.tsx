@@ -13,6 +13,8 @@ import {
   ArrowLeft,
   Flag,
   Eye,
+  ZoomIn,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -858,10 +860,8 @@ export default function SectionalTest({ user }: { user: any }) {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm leading-relaxed text-muted-foreground max-h-56 overflow-y-auto pr-2 space-y-3">
-                    {activePassage.text.split("\n\n").map((para, i) => (
-                      <p key={i}>{para}</p>
-                    ))}
+    <div className="text-sm leading-relaxed text-muted-foreground max-h-56 overflow-y-auto pr-2">
+                    <PassageContent text={activePassage.text} />
                   </div>
                 </CardContent>
               </Card>
