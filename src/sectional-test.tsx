@@ -1087,6 +1087,10 @@ export default function SectionalTest({ user }: { user: any }) {
                 ? isTitaCorrect(studentAns, q.correctAnswer)
                 : studentAns === q.correctAnswer;
               const isSkipped = !studentAns;
+           // Find the passage for this question if any
+              const passage = q.passageId && selectedTest.passages
+                ? selectedTest.passages.find((p) => p.id === q.passageId)
+                : null;
               return (
                 <Card
                   key={q.id}
