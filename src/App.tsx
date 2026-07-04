@@ -659,6 +659,7 @@ function VideoLectures() {
   })()}
               <div className="aspect-video bg-slate-100 relative flex items-center justify-center">
                 <PlayCircle className="text-primary/40 group-hover:text-primary group-hover:scale-110 transition-all" size={64} />
+  </div>
                 <div className="absolute bottom-3 right-3 bg-black/70 text-white text-[10px] font-bold px-2 py-1 rounded">
                   {video.duration} MIN
                 </div>
