@@ -636,6 +636,27 @@ function VideoLectures() {
             </div>
           ) : filtered.map((video) => video && (
             <Card key={video.id} className="overflow-hidden group hover:shadow-xl transition-all">
+                 <div className="aspect-video bg-slate-100 relative flex items-center justify-center overflow-hidden">
+  {(() => {
+    const url = video.googleDriveLink;
+    const ytMatch = url?.match(/(?:youtube\.com\/(?:watch\?v=|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    const driveMatch = url?.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    const driveIdMatch = url?.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    const fileId = driveMatch?.[1] || driveIdMatch?.[1];
+    const thumbnail = ytMatch
+      ? `https://img.youtube.com/vi/${ytMatch[1]}/hqdefault.jpg`
+      : fileId
+      ? `https://drive.google.com/thumbnail?id=${fileId}&sz=w640`
+      : null;
+    return thumbnail ? (
+      <img
+        src={thumbnail}
+        alt={video.topicName}
+        className="absolute inset-0 w-full h-full object-cover"
+        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+      />
+    ) : null;
+  })()}
               <div className="aspect-video bg-slate-100 relative flex items-center justify-center">
                 <PlayCircle className="text-primary/40 group-hover:text-primary group-hover:scale-110 transition-all" size={64} />
                 <div className="absolute bottom-3 right-3 bg-black/70 text-white text-[10px] font-bold px-2 py-1 rounded">
