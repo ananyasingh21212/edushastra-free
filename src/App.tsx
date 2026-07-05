@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
  import SectionalTest from "./sectional-test";
 import MockTest from "./mock-test";
+import PYQTest from "./pyq-test";
 import "katex/dist/katex.min.css";
 import Latex from "react-latex-next";
 import { 
@@ -26,7 +27,8 @@ import {
   ExternalLink,
   BrainCircuit,
   History,
-  Presentation
+  Presentation,
+  Archive
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Button } from "@/components/ui/button";
@@ -215,7 +217,8 @@ export default function App() {
                   <SidebarItem icon={History} label="Test History" active={activeTab === "history"} onClick={() => { setActiveTab("history"); setIsMobileMenuOpen(false); }} />
                    <SidebarItem icon={ClipboardList} label="Sectional Tests" active={activeTab === "sectional"} onClick={() => setActiveTab("sectional")} />
                   <SidebarItem icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => { setActiveTab("analytics"); setIsMobileMenuOpen(false); }} />
-                    <SidebarItem icon={ClipboardList} label="Mock Tests" active={activeTab === "mock"} onClick={() => setActiveTab("mock")} />
+                  <SidebarItem icon={ClipboardList} label="Mock Tests" active={activeTab === "mock"} onClick={() => setActiveTab("mock")} />
+                 <SidebarItem icon={Archive} label="PYQ Papers" active={activeTab === "pyq"} onClick={() => { setActiveTab("pyq"); setIsMobileMenuOpen(false); }} />
                   {user.role === "admin" && (
                     <>
                       <div className="pt-6 pb-2 text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] px-3">Admin Panel</div>
@@ -260,7 +263,8 @@ export default function App() {
              <SidebarItem icon={ClipboardList} label="Sectional Tests" active={activeTab === "sectional"} onClick={() => setActiveTab("sectional")} />
             <SidebarItem icon={BarChart3} label="Analytics" active={activeTab === "analytics"} onClick={() => setActiveTab("analytics")} />
               <SidebarItem icon={ClipboardList} label="Mock Tests" active={activeTab === "mock"} onClick={() => setActiveTab("mock")} />
-            {user.role === "admin" && (
+           <SidebarItem icon={Archive} label="PYQ Papers" active={activeTab === "pyq"} onClick={() => setActiveTab("pyq")} /> 
+           {user.role === "admin" && (
               <>
                 <div className="pt-4 pb-2 px-4 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Admin Panel</div>
                 <SidebarItem icon={ShieldCheck} label="Admin Dashboard" active={activeTab === "admin"} onClick={() => setActiveTab("admin")} />
@@ -301,6 +305,7 @@ export default function App() {
             {activeTab === "analytics" && <Analytics user={user} />}
               {activeTab === "sectional" && <SectionalTest user={user} />}
               {activeTab === "mock" && <MockTest user={user} />}
+           {activeTab === "pyq" && <PYQTest user={user} />}
             {activeTab === "admin" && <AdminDashboard user={user} />}
           </motion.div>
         </AnimatePresence>
