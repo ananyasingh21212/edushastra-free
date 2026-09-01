@@ -75,7 +75,7 @@ interface DailyResult {
   sectionScores?: Record<string, number>;
 }
 
-type DailyStatus = "completed" | "missed" | "today" | "upcoming";
+type DailyStatus = "completed" | "pending" | "today" | "upcoming";
 type SortMode = "date-desc" | "date-asc";
 type StatusFilter = "all" | DailyStatus;
 
@@ -96,7 +96,7 @@ const SECTION_TAG: Record<string, { label: string; textColor: string; lightColor
 const STATUS_META: Record<DailyStatus, { label: string; badgeClass: string; dotClass: string }> = {
   completed: { label: "Completed", badgeClass: "bg-green-100 text-green-700 border-none", dotClass: "bg-green-500" },
   today: { label: "Today", badgeClass: "bg-orange-100 text-orange-700 border-none", dotClass: "bg-orange-500" },
-  missed: { label: "Missed", badgeClass: "bg-red-100 text-red-700 border-none", dotClass: "bg-red-500" },
+  pending: { label: "Pending", badgeClass: "bg-red-100 text-red-700 border-none", dotClass: "bg-red-500" },
   upcoming: { label: "Upcoming", badgeClass: "bg-slate-100 text-slate-500 border-none", dotClass: "bg-slate-400" },
 };
 
@@ -320,7 +320,7 @@ function getDailyStatus(testDate: string, attempted: boolean): DailyStatus {
   const day = startOfDay(new Date(testDate));
   const today = startOfDay(new Date());
   if (day.getTime() > today.getTime()) return "upcoming";
-  if (day.getTime() < today.getTime()) return "missed";
+  if (day.getTime() < today.getTime()) return "pending";
   return "today";
 }
 
@@ -430,7 +430,7 @@ export default function DailyPractice({ user }: { user: any }) {
   }, [availableTests, attemptedIds]);
 
   const statusCounts = useMemo(() => {
-    const counts: Record<StatusFilter, number> = { all: decoratedTests.length, completed: 0, missed: 0, today: 0, upcoming: 0 };
+    const counts: Record<StatusFilter, number> = { all: decoratedTests.length, completed: 0, pending: 0, today: 0, upcoming: 0 };
     decoratedTests.forEach(({ status }) => { counts[status]++; });
     return counts;
   }, [decoratedTests]);
@@ -613,7 +613,7 @@ export default function DailyPractice({ user }: { user: any }) {
     const FILTERS: { key: StatusFilter; label: string }[] = [
       { key: "all", label: "All" },
       { key: "today", label: "Today" },
-      { key: "missed", label: "Missed" },
+      { key: "pending", label: "Pending" },
       { key: "completed", label: "Completed" },
       { key: "upcoming", label: "Upcoming" },
     ];
@@ -683,7 +683,7 @@ export default function DailyPractice({ user }: { user: any }) {
                   key={test.id}
                   className={`transition-all ${locked ? "opacity-70" : "hover:shadow-md"} border-l-4 ${
                     status === "completed" ? "border-l-green-500" :
-                    status === "missed" ? "border-l-red-500" :
+                    status === "pending" ? "border-l-red-500" :
                     status === "today" ? "border-l-orange-500" : "border-l-slate-300"
                   }`}
                 >
@@ -734,7 +734,7 @@ export default function DailyPractice({ user }: { user: any }) {
                           ? "Review Attempt"
                           : locked
                           ? "Locked"
-                          : status === "missed"
+                          : status === "Pending"
                           ? "Attempt Now"
                           : "Start Test"}
                       </Button>
