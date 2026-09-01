@@ -61,9 +61,10 @@ const SHEET_CONFIG: Record<string, string[]> = {
   Students: ["id", "email", "password", "name", "phone", "registrationDate", "status", "role"],
   CourseMaterials: ["id", "topicName", "section", "googleSheetLink", "googleDriveLink", "description", "dateAdded"],
   VideoLectures: ["id", "topicName", "section", "googleSheetLink", "googleDriveLink", "duration", "instructorName", "dateUploaded"],
-  UnverifiedQuestions: ["id", "section", "questionText", "options", "correctAnswer", "explanation", "difficulty"],
-  ApprovedQuestions: ["id", "section", "questionText", "options", "correctAnswer", "explanation", "difficulty", "approvedDate"],
-  DailyTests: ["id", "testDate", "questionIds"],
+  UnverifiedQuestions: ["id", "section", "questionText", "options", "correctAnswer", "explanation", "difficulty", "passageId", "targetExam"],
+  ApprovedQuestions: ["id", "section", "questionText", "options", "correctAnswer", "explanation", "difficulty", "passageId", "targetExam", "approvedDate"],
+  DailyTests: ["id", "testDate", "questionIds", "durationMinutes", "passageIds", "targetExam"],
+  DailyPassages: ["id", "title", "text", "targetExam"],
   TestResults: ["id", "studentId", "testDate", "testId", "totalScore", "correctAnswers", "wrongAnswers", "skippedQuestions", "timeSpent", "sectionScores", "studentAnswers"],
    SectionalTests:   ["id", "name", "section", "durationMinutes", "questionIds", "passageIds", "targetExam", "publishedDate"],
   SectionalQuestions: ["id", "section", "questionText", "questionType", "options", "correctAnswer", "answerTolerance", "explanation", "difficulty", "passageId", "targetExam"],
@@ -207,6 +208,7 @@ interface DB {
   unverifiedQuestions: any[];
   approvedQuestions: any[];
   dailyTests: any[];
+  dailyPassages: any[];
   testResults: any[];
   assignedTests: any[];
   announcements: any[];
@@ -273,6 +275,7 @@ const initialDB: DB = {
   unverifiedQuestions: [],
   approvedQuestions: [],
   dailyTests: [],
+  dailyPassages: [],
   testResults: [],
   assignedTests: [],
   sectionalTests: [],
@@ -484,14 +487,21 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
   app.post("/api/daily-test/publish", authenticateToken, async (req: any, res) => {
     if (req.user.role !== 'admin') return res.sendStatus(403);
-    const { testDate, questionIds } = req.body; // testDate format: YYYY-MM-DD
+    const { testDate, questionIds, durationMinutes, passageIds, targetExam } = req.body; // testDate format: YYYY-MM-DD
     
     if (!testDate || !questionIds || !Array.isArray(questionIds) || questionIds.length === 0) {
       return res.status(400).json({ message: "Invalid test data" });
     }
 
     const testId = `DT${Date.now()}`;
-    const newTest = { id: testId, testDate, questionIds };
+    const newTest = {
+      id: testId,
+      testDate,
+      questionIds,
+      durationMinutes: durationMinutes || 40,
+      passageIds: passageIds || [],
+      targetExam: targetExam || "CAT",
+    };
     
     await appendSheetData("DailyTests", newTest);
     
@@ -501,6 +511,30 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
     saveLocalDB(db);
     
     res.json({ success: true, testId });
+  });
+
+  // ─── Admin: POST /api/daily-passages ── add an RC passage for daily tests ──
+  app.post("/api/daily-passages", authenticateToken, async (req: any, res) => {
+    if (req.user.role !== 'admin') return res.sendStatus(403);
+    try {
+      const passage = {
+        ...req.body,
+        id: req.body.id || `DP${Date.now()}`,
+        targetExam: req.body.targetExam || "CAT",
+      };
+      await appendSheetData("DailyPassages", passage);
+      const db = getLocalDB();
+      db.dailyPassages.push(passage);
+      saveLocalDB(db);
+      res.json({ success: true, passageId: passage.id });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to add passage" });
+    }
+  });
+
+  // ─── GET /api/daily-passages ── list all daily-test passages ───────────────
+  app.get("/api/daily-passages", authenticateToken, async (req, res) => {
+    res.json(await fetchSheetData("DailyPassages") || getLocalDB().dailyPassages);
   });
 
   // Question Management
@@ -570,7 +604,10 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
     if (test) {
       const approved = await fetchSheetData("ApprovedQuestions") || getLocalDB().approvedQuestions;
       const questions = approved.filter(q => test.questionIds.includes(q.id));
-      res.json({ ...test, questions });
+      const allPassages = await fetchSheetData("DailyPassages") || getLocalDB().dailyPassages;
+      const pIds: string[] = Array.isArray(test.passageIds) ? test.passageIds : [];
+      const passages = allPassages.filter((p: any) => pIds.includes(p.id));
+      res.json({ ...test, questions, passages });
     } else {
       res.status(404).json({ message: "Test not found." });
     }
@@ -584,7 +621,10 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
     if (test) {
       const approved = await fetchSheetData("ApprovedQuestions") || getLocalDB().approvedQuestions;
       const questions = approved.filter(q => test.questionIds.includes(q.id));
-      res.json({ ...test, questions });
+      const allPassages = await fetchSheetData("DailyPassages") || getLocalDB().dailyPassages;
+      const pIds: string[] = Array.isArray(test.passageIds) ? test.passageIds : [];
+      const passages = allPassages.filter((p: any) => pIds.includes(p.id));
+      res.json({ ...test, questions, passages });
     } else {
       res.status(404).json({ message: "No test available for today." });
     }
