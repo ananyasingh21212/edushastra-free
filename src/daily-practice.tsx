@@ -104,13 +104,18 @@ const STATUS_META: Record<DailyStatus, { label: string; badgeClass: string; dotC
 
 function MultiParagraphLatex({ text, className }: { text: string; className?: string }) {
   if (!text) return null;
-    const normalized = text.replace(/\\n/g, "\n");
-  const paras = text.split("\n\n");
+  const normalized = text.replace(/\\n/g, "\n");
+  const paras = normalized.split(/\n\n+/);
   return (
     <>
       {paras.map((para, i) => (
         <p key={i} className={i > 0 ? `mt-2 ${className || ""}` : className}>
-          <Latex>{para}</Latex>
+          {para.split("\n").map((line, j, arr) => (
+            <React.Fragment key={j}>
+              <Latex>{line}</Latex>
+              {j < arr.length - 1 && <br />}
+            </React.Fragment>
+          ))}
         </p>
       ))}
     </>
