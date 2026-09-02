@@ -104,6 +104,7 @@ const STATUS_META: Record<DailyStatus, { label: string; badgeClass: string; dotC
 
 function MultiParagraphLatex({ text, className }: { text: string; className?: string }) {
   if (!text) return null;
+    const normalized = text.replace(/\\n/g, "\n");
   const paras = text.split("\n\n");
   return (
     <>
